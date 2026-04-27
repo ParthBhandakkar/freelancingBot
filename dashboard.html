@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Freelancing Bot Dashboard</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: rgba(17, 24, 39, 0.86);
+      --panel-strong: #111827;
+      --line: rgba(148, 163, 184, 0.22);
+      --text: #e5edf8;
+      --muted: #94a3b8;
+      --teal: #2dd4bf;
+      --gold: #f59e0b;
+      --rose: #fb7185;
+      --blue: #38bdf8;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(45, 212, 191, 0.14), transparent 24%),
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 26%),
+        linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
+    }
+    .shell {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+      display: grid;
+      gap: 18px;
+    }
+    .hero,
+    .panel,
+    .card,
+    .modal-box {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .hero {
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      line-height: 1;
+      letter-spacing: 0;
+    }
+    .hero p,
+    .subtle,
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .strip,
+    .controls,
+    .filters,
+    .card-actions,
+    .metric-grid,
+    .main-grid,
+    .card-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .stack {
+      display: grid;
+      gap: 18px;
+    }
+    .panel {
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .panel h2,
+    .card h3 {
+      margin: 0;
+      font-size: 1.08rem;
+      letter-spacing: 0;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      padding: 16px;
+      min-height: 200px;
+      display: grid;
+      gap: 12px;
+    }
+    .card .tag {
+      display: inline-flex;
+      width: fit-content;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.82rem;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      min-height: 92px;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 42, 0.72);
+      display: grid;
+      gap: 8px;
+    }
+    .metric .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .controls button,
+    .card button,
+    .modal-box button {
+      min-height: 42px;
+    }
+    button {
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font: inherit;
+      transition: transform 0.14s ease, opacity 0.14s ease, background 0.14s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.56; cursor: not-allowed; transform: none; }
+    .primary { background: linear-gradient(135deg, #14b8a6, #0891b2); color: #02131c; font-weight: 700; }
+    .secondary { background: rgba(255, 255, 255, 0.06); color: var(--text); border-color: var(--line); }
+    .warning { background: rgba(245, 158, 11, 0.16); color: #fbbf24; border-color: rgba(245, 158, 11, 0.25); }
+    .danger { background: rgba(244, 63, 94, 0.14); color: #fda4af; border-color: rgba(244, 63, 94, 0.24); }
+    .filters label,
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+    input[type="number"] {
+      width: 100%;
+      min-height: 42px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 42, 0.78);
+      color: var(--text);
+      padding: 0 12px;
+      font: inherit;
+    }
+    pre {
+      margin: 0;
+      max-height: 440px;
+      overflow: auto;
+      padding: 14px;
+      border-radius: 8px;
+      background: rgba(2, 6, 23, 0.88);
+      color: #d7e6f7;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      white-space: pre-wrap;
+      line-height: 1.45;
+      font-size: 0.88rem;
+    }
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      max-width: 320px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: rgba(15, 23, 42, 0.92);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .modal.show { display: flex; }
+    .modal-box {
+      width: min(460px, 100%);
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      background: rgba(17, 24, 39, 0.96);
+    }
+    .modal-box h3 {
+      margin: 0;
+      font-size: 1.16rem;
+    }
+    .modal-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 960px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="hero">
+      <h1>Freelancing Bot Dashboard</h1>
+      <p>Scrape leads, send connection requests, check accepted connections, and message only when the profile is ready.</p>
+      <div class="strip">
+        <span class="pill" id="browserBadge">Browser: checking</span>
+        <span class="pill" id="headlessBadge">Headless: checking</span>
+        <span class="pill" id="stateBadge">State: checking</span>
+        <span class="pill" id="operationBadge">Operation: idle</span>
+      </div>
+    </section>
+
+    <div class="main-grid">
+      <section class="stack">
+        <div class="panel">
+          <h2>Controls</h2>
+          <p class="subtle">The flow mirrors the reference bot: discover first, then connect, then run the accepted-connection message pass when needed.</p>
+          <div class="controls">
+            <button class="warning" onclick="pauseBot()">Pause</button>
+            <button class="secondary" onclick="resumeBot()">Resume</button>
+            <button class="danger" onclick="stopBot()">Stop</button>
+            <button class="secondary" onclick="refreshStatus()">Refresh</button>
+            <label class="toggle"><input id="headlessToggle" type="checkbox" /> Headless browser</label>
+          </div>
+          <div class="filters">
+            <label><input type="checkbox" id="src_linkedin" checked /> LinkedIn</label>
+            <label><input type="checkbox" id="src_linkedin_posts" checked /> LinkedIn Posts</label>
+            <label><input type="checkbox" id="src_upwork" checked /> Upwork</label>
+            <label><input type="checkbox" id="src_clutch" checked /> Clutch</label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Run Modes</h2>
+          <div class="card-grid">
+            <article class="card">
+              <span class="tag">Discovery</span>
+              <h3>Scrape Leads</h3>
+              <p>Collect and score leads from the enabled sources without sending outreach.</p>
+              <div class="card-actions">
+                <button class="primary action-btn" onclick="openRunModal('discover')">Launch</button>
+              </div>
+            </article>
+            <article class="card">
+              <span class="tag">LinkedIn</span>
+              <h3>Connect</h3>
+              <p>Open stored LinkedIn leads and send connection requests where the profile is still not first-degree.</p>
+              <div class="card-actions">
+                <button class="primary action-btn" onclick="openRunModal('connect')">Launch</button>
+              </div>
+            </article>
+            <article class="card">
+              <span class="tag">Follow-Up</span>
+              <h3>Check And Message</h3>
+              <p>Revisit pending or connected leads and message them only after LinkedIn shows first-degree access.</p>
+              <div class="card-actions">
+                <button class="primary action-btn" onclick="openRunModal('message')">Launch</button>
+              </div>
+            </article>
+            <article class="card">
+              <span class="tag">Mixed</span>
+              <h3>Combined Outreach</h3>
+              <p>Message current first-degree leads and send connection requests to everyone else in the same pass.</p>
+              <div class="card-actions">
+                <button class="primary action-btn" onclick="openRunModal('outreach')">Launch</button>
+              </div>
+            </article>
+            <article class="card">
+              <span class="tag">End To End</span>
+              <h3>Full Campaign</h3>
+              <p>Run discovery first, then the combined outreach pass using the same browser session and source set.</p>
+              <div class="card-actions">
+                <button class="primary action-btn" onclick="openRunModal('campaign')">Launch</button>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Session Metrics</h2>
+          <div class="metric-grid">
+            <div class="metric"><span class="subtle">Discovered</span><span class="value" id="metricDiscovered">0</span></div>
+            <div class="metric"><span class="subtle">Candidates</span><span class="value" id="metricCandidates">0</span></div>
+            <div class="metric"><span class="subtle">Outreached</span><span class="value" id="metricOutreached">0</span></div>
+            <div class="metric"><span class="subtle">Messages</span><span class="value" id="metricMessages">0</span></div>
+            <div class="metric"><span class="subtle">Connection Requests</span><span class="value" id="metricConnects">0</span></div>
+            <div class="metric"><span class="subtle">Connected</span><span class="value" id="metricConnected">0</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="stack">
+        <div class="panel">
+          <h2>Live Status</h2>
+          <pre id="statusBox">{ "loading": true }</pre>
+        </div>
+        <div class="panel">
+          <h2>Latest Result</h2>
+          <pre id="resultBox">No operations have run yet.</pre>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal" id="runModal">
+    <div class="modal-box">
+      <h3 id="modalTitle">Launch</h3>
+      <p class="subtle" id="modalHelp">Configure the run and start it in the background.</p>
+      <div class="modal-grid" id="singleCountWrap">
+        <label>
+          <span class="subtle" id="singleCountLabel">Max results</span>
+          <input id="singleCount" type="number" min="1" value="10" />
+        </label>
+      </div>
+      <div class="modal-grid" id="campaignCountsWrap" style="display:none;">
+        <label>
+          <span class="subtle">Discovery limit</span>
+          <input id="campaignDiscoveryCount" type="number" min="1" value="12" />
+        </label>
+        <label>
+          <span class="subtle">Outreach limit</span>
+          <input id="campaignOutreachCount" type="number" min="1" value="6" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeRunModal()">Cancel</button>
+        <button class="primary" onclick="submitRun()">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const statusBox = document.getElementById("statusBox");
+    const resultBox = document.getElementById("resultBox");
+    const runModal = document.getElementById("runModal");
+    const toast = document.getElementById("toast");
+    const actionButtons = Array.from(document.querySelectorAll(".action-btn"));
+    let currentMode = "";
+
+    const modeMeta = {
+      discover: { title: "Scrape Leads", label: "Max leads", help: "Collect leads only. No outreach is sent." },
+      connect: { title: "Connect", label: "Max profiles", help: "Send connection requests where the lead is not first-degree yet." },
+      message: { title: "Check And Message", label: "Max profiles", help: "Only message leads after LinkedIn shows first-degree access." },
+      outreach: { title: "Combined Outreach", label: "Max profiles", help: "Message existing first-degree leads and connect with the rest." },
+      campaign: { title: "Full Campaign", label: "", help: "Run discovery first, then combined outreach." }
+    };
+
+    function showToast(message, isError = false) {
+      toast.textContent = message;
+      toast.style.borderColor = isError ? "rgba(244, 63, 94, 0.35)" : "rgba(45, 212, 191, 0.3)";
+      toast.classList.add("show");
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 2600);
+    }
+
+    function getSources() {
+      const selected = [];
+      if (document.getElementById("src_linkedin").checked) selected.push("linkedin");
+      if (document.getElementById("src_linkedin_posts").checked) selected.push("linkedin_posts");
+      if (document.getElementById("src_upwork").checked) selected.push("upwork");
+      if (document.getElementById("src_clutch").checked) selected.push("clutch");
+      return selected.join(",");
+    }
+
+    function numValue(id) {
+      const value = Number(document.getElementById(id).value);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    }
+
+    async function api(path, method = "GET", payload = null) {
+      const init = { method, headers: { "Content-Type": "application/json" } };
+      if (payload && method !== "GET") init.body = JSON.stringify(payload);
+      const res = await fetch(path, init);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+      return data;
+    }
+
+    function openRunModal(mode) {
+      currentMode = mode;
+      const meta = modeMeta[mode];
+      document.getElementById("modalTitle").textContent = meta.title;
+      document.getElementById("modalHelp").textContent = meta.help;
+      document.getElementById("singleCountLabel").textContent = meta.label || "Max results";
+      document.getElementById("singleCountWrap").style.display = mode === "campaign" ? "none" : "grid";
+      document.getElementById("campaignCountsWrap").style.display = mode === "campaign" ? "grid" : "none";
+      runModal.classList.add("show");
+    }
+
+    function closeRunModal() {
+      runModal.classList.remove("show");
+      currentMode = "";
+    }
+
+    async function submitRun() {
+      if (!currentMode) return;
+      try {
+        const headless = document.getElementById("headlessToggle").checked;
+        let data;
+        if (currentMode === "discover") {
+          data = await api("/discover", "POST", {
+            max_results: numValue("singleCount"),
+            sources: getSources(),
+            headless
+          });
+        } else if (currentMode === "connect") {
+          data = await api("/connect", "POST", {
+            max_results: numValue("singleCount"),
+            headless
+          });
+        } else if (currentMode === "message") {
+          data = await api("/message", "POST", {
+            max_results: numValue("singleCount"),
+            headless
+          });
+        } else if (currentMode === "outreach") {
+          data = await api("/outreach", "POST", {
+            max_results: numValue("singleCount"),
+            headless
+          });
+        } else if (currentMode === "campaign") {
+          data = await api("/campaign", "POST", {
+            discovery_limit: numValue("campaignDiscoveryCount"),
+            outreach_limit: numValue("campaignOutreachCount"),
+            sources: getSources(),
+            headless
+          });
+        }
+        resultBox.textContent = JSON.stringify(data, null, 2);
+        closeRunModal();
+        showToast((data && data.message) || "Run started");
+        await refreshStatus();
+      } catch (error) {
+        showToast(String(error), true);
+      }
+    }
+
+    async function pauseBot() {
+      try {
+        const data = await api("/pause", "POST", {});
+        resultBox.textContent = JSON.stringify(data, null, 2);
+        showToast("Paused");
+        await refreshStatus();
+      } catch (error) {
+        showToast(String(error), true);
+      }
+    }
+
+    async function resumeBot() {
+      try {
+        const data = await api("/resume", "POST", {});
+        resultBox.textContent = JSON.stringify(data, null, 2);
+        showToast("Resumed");
+        await refreshStatus();
+      } catch (error) {
+        showToast(String(error), true);
+      }
+    }
+
+    async function stopBot() {
+      try {
+        const data = await api("/stop", "POST", {});
+        resultBox.textContent = JSON.stringify(data, null, 2);
+        showToast("Stopped");
+        await refreshStatus();
+      } catch (error) {
+        showToast(String(error), true);
+      }
+    }
+
+    function updateBadges(status) {
+      document.getElementById("browserBadge").textContent =
+        `Browser: ${status.runtime.browser_available ? "ready" : "missing"}`;
+      document.getElementById("headlessBadge").textContent =
+        `Headless: ${status.runtime.headless ? "on" : "off"}`;
+      document.getElementById("stateBadge").textContent = `State: ${status.bot.state || "idle"}`;
+      document.getElementById("operationBadge").textContent =
+        `Operation: ${status.control.active_operation || "idle"}`;
+      document.getElementById("headlessToggle").checked = Boolean(status.runtime.headless);
+    }
+
+    function updateMetrics(status) {
+      const stats = status.bot.stats || {};
+      document.getElementById("metricDiscovered").textContent = stats.discovered ?? 0;
+      document.getElementById("metricCandidates").textContent = stats.candidate ?? 0;
+      document.getElementById("metricOutreached").textContent = stats.outreached ?? 0;
+      document.getElementById("metricMessages").textContent = stats.messages_sent ?? 0;
+      document.getElementById("metricConnects").textContent = stats.connect_requested ?? 0;
+      document.getElementById("metricConnected").textContent = stats.connected ?? 0;
+      const busy = Boolean(status.control.busy);
+      actionButtons.forEach(button => { button.disabled = busy; });
+    }
+
+    async function refreshStatus() {
+      try {
+        const data = await api("/status");
+        statusBox.textContent = JSON.stringify(data, null, 2);
+        updateBadges(data);
+        updateMetrics(data);
+        if (Object.keys(data.control.last_result || {}).length) {
+          resultBox.textContent = JSON.stringify(data.control.last_result, null, 2);
+        } else if (data.control.last_error) {
+          resultBox.textContent = JSON.stringify({ error: data.control.last_error }, null, 2);
+        }
+      } catch (error) {
+        showToast(String(error), true);
+      }
+    }
+
+    async function bootstrap() {
+      await refreshStatus();
+      window.setInterval(refreshStatus, 2500);
+    }
+
+    window.addEventListener("click", (event) => {
+      if (event.target === runModal) closeRunModal();
+    });
+
+    bootstrap();
+  </script>
+</body>
+</html>

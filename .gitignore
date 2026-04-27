@@ -1,0 +1,43 @@
+# Environment and secrets
+# -----------------------
+.env
+.env.*
+!.env.example
+
+# Google service account / API credentials
+credentials.json
+!credentials.json.example
+
+# Runtime artifacts and generated data (may contain sensitive session info)
+browser_data/
+data/
+logs/
+*.log
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.python-version
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Editors, OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
