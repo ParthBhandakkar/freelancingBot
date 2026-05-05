@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     max_outreach_per_run: int = 20
     min_fit_score: int = 55
     scroll_rounds_per_query: int = 7
-    discover_platforms: str = "linkedin,linkedin_posts,upwork,clutch"
+    discover_platforms: str = "linkedin,linkedin_posts,linkedin_posts_native,upwork,upwork_rss,clutch,yc"
     max_web_results_per_query: int = 4
 
     # ── Profiling and targeting ───────────────────────────────────────
@@ -111,6 +111,22 @@ class Settings(BaseSettings):
         '"any recommendations" automation developer, '
         '"paid project" backend developer'
     )
+    linkedin_post_queries: str = (
+        "looking for developer, "
+        "need help with automation, "
+        "hiring freelancer backend, "
+        "need a developer for, "
+        "looking to hire engineer, "
+        "who can build"
+    )
+    upwork_rss_queries: str = (
+        "backend developer, "
+        "AI automation, "
+        "full stack developer, "
+        "python developer api, "
+        "saas dashboard, "
+        "workflow automation"
+    )
     role_keywords: str = (
         "founder,co-founder,ceo,cto,vp engineering,head of engineering,"
         "head of product,engineering manager,operations head,technical founder"
@@ -127,6 +143,7 @@ class Settings(BaseSettings):
 
     # ── Outreach content ──────────────────────────────────────────────
     outreach_send_message_if_possible: bool = True
+    soft_pitch_enabled: bool = True
     outreach_message_template: str = (
         "Hi {first_name}, I noticed your work in {company}. "
         "I help teams build practical automation and AI/ML product features with "
@@ -134,10 +151,66 @@ class Settings(BaseSettings):
         "my portfolio at {portfolio_url}."
     )
     outreach_connection_note_template: str = (
-        "Hi {first_name}, I help teams build automation and AI/ML solutions with "
-        "full-stack delivery. Great to connect."
+        "Hi {first_name}, fellow builder in the AI/automation space. "
+        "Would love to connect!"
+    )
+    outreach_pitch_message_template: str = (
+        "Hi {first_name}, thanks for connecting! I noticed your work at {company}. "
+        "I help teams ship backend-heavy products, AI automation, and analytics dashboards. "
+        "Would love to share a quick plan if you have any upcoming projects — "
+        "here's my portfolio: {portfolio_url}"
     )
     outreach_signature: str = "Best, {freelancer_name}"
+
+    # ── Follow-up nurturing ───────────────────────────────────────────
+    followup_1_delay_days: int = 3
+    followup_2_delay_days: int = 7
+    followup_1_template: str = (
+        "Hey {first_name}, just bumping this to the top of your inbox. "
+        "Let me know if you have any bandwidth to chat this week about "
+        "your {company} projects."
+    )
+    followup_2_template: str = (
+        "Hi {first_name}, last follow-up from me! If you ever need help with "
+        "backend engineering, AI automation, or dashboard builds, I'm a message away. "
+        "Portfolio: {portfolio_url}"
+    )
+
+    # ── Email outreach ────────────────────────────────────────────────
+    hunter_api_key: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = ""
+    email_daily_limit: int = 30
+    email_subject_template: str = (
+        "Quick question about {company}"
+    )
+    email_body_template: str = (
+        "Hi {first_name},\n\n"
+        "I came across {company} and was impressed by what you're building. "
+        "I specialize in backend engineering, AI automation, and analytics dashboards "
+        "— the kind of work that accelerates product teams.\n\n"
+        "Would you be open to a quick chat about any upcoming projects?\n\n"
+        "Portfolio: {portfolio_url}\n\n"
+        "Best,\n{freelancer_name}"
+    )
+    email_followup_1_subject: str = "Re: Quick question about {company}"
+    email_followup_1_body: str = (
+        "Hi {first_name},\n\n"
+        "Just bumping my previous note. If you have any backend, AI, or automation "
+        "projects coming up, I'd love to help.\n\n"
+        "Best,\n{freelancer_name}"
+    )
+    email_followup_2_subject: str = "Re: Quick question about {company}"
+    email_followup_2_body: str = (
+        "Hi {first_name},\n\n"
+        "Last follow-up from me! If you ever need help with engineering or "
+        "automation, I'm one reply away. Portfolio: {portfolio_url}\n\n"
+        "Cheers,\n{freelancer_name}"
+    )
 
     # ── Persistence ───────────────────────────────────────────────────
     lead_store_file: str = "freelance_leads.csv"
@@ -163,6 +236,22 @@ class Settings(BaseSettings):
     @property
     def all_search_query_list(self) -> list[str]:
         return _dedupe(self.buyer_intent_query_list + self.search_query_list)
+
+    @property
+    def linkedin_post_query_list(self) -> list[str]:
+        return _dedupe(_split_csv(self.linkedin_post_queries))
+
+    @property
+    def upwork_rss_query_list(self) -> list[str]:
+        return _dedupe(_split_csv(self.upwork_rss_queries))
+
+    @property
+    def has_hunter_key(self) -> bool:
+        return bool(self.hunter_api_key.strip())
+
+    @property
+    def has_smtp_config(self) -> bool:
+        return bool(self.smtp_host.strip() and self.smtp_user.strip())
 
     @property
     def discover_platform_list(self) -> list[str]:

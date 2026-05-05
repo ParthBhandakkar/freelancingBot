@@ -286,8 +286,11 @@
           <div class="filters">
             <label><input type="checkbox" id="src_linkedin" checked /> LinkedIn</label>
             <label><input type="checkbox" id="src_linkedin_posts" checked /> LinkedIn Posts</label>
+            <label><input type="checkbox" id="src_linkedin_posts_native" checked /> Posts (Native)</label>
             <label><input type="checkbox" id="src_upwork" checked /> Upwork</label>
+            <label><input type="checkbox" id="src_upwork_rss" checked /> Upwork RSS</label>
             <label><input type="checkbox" id="src_clutch" checked /> Clutch</label>
+            <label><input type="checkbox" id="src_yc" checked /> YC Startups</label>
           </div>
         </div>
 
@@ -334,6 +337,14 @@
                 <button class="primary action-btn" onclick="openRunModal('campaign')">Launch</button>
               </div>
             </article>
+            <article class="card">
+              <span class="tag">Nurturing</span>
+              <h3>Follow Up</h3>
+              <p>Send follow-up messages to leads that were contacted but haven't replied yet (day 3 and day 7).</p>
+              <div class="card-actions">
+                <button class="primary action-btn" onclick="openRunModal('follow_up')">Launch</button>
+              </div>
+            </article>
           </div>
         </div>
 
@@ -346,6 +357,8 @@
             <div class="metric"><span class="subtle">Messages</span><span class="value" id="metricMessages">0</span></div>
             <div class="metric"><span class="subtle">Connection Requests</span><span class="value" id="metricConnects">0</span></div>
             <div class="metric"><span class="subtle">Connected</span><span class="value" id="metricConnected">0</span></div>
+            <div class="metric"><span class="subtle">Emails Sent</span><span class="value" id="metricEmails">0</span></div>
+            <div class="metric"><span class="subtle">Follow-ups</span><span class="value" id="metricFollowups">0</span></div>
           </div>
         </div>
       </section>
@@ -405,7 +418,8 @@
       connect: { title: "Connect", label: "Max profiles", help: "Send connection requests where the lead is not first-degree yet." },
       message: { title: "Check And Message", label: "Max profiles", help: "Only message leads after LinkedIn shows first-degree access." },
       outreach: { title: "Combined Outreach", label: "Max profiles", help: "Message existing first-degree leads and connect with the rest." },
-      campaign: { title: "Full Campaign", label: "", help: "Run discovery first, then combined outreach." }
+      campaign: { title: "Full Campaign", label: "", help: "Run discovery first, then combined outreach." },
+      follow_up: { title: "Follow Up", label: "Max leads", help: "Send follow-up messages to leads that haven't replied." }
     };
 
     function showToast(message, isError = false) {
@@ -420,8 +434,11 @@
       const selected = [];
       if (document.getElementById("src_linkedin").checked) selected.push("linkedin");
       if (document.getElementById("src_linkedin_posts").checked) selected.push("linkedin_posts");
+      if (document.getElementById("src_linkedin_posts_native").checked) selected.push("linkedin_posts_native");
       if (document.getElementById("src_upwork").checked) selected.push("upwork");
+      if (document.getElementById("src_upwork_rss").checked) selected.push("upwork_rss");
       if (document.getElementById("src_clutch").checked) selected.push("clutch");
+      if (document.getElementById("src_yc").checked) selected.push("yc");
       return selected.join(",");
     }
 
@@ -488,6 +505,11 @@
             sources: getSources(),
             headless
           });
+        } else if (currentMode === "follow_up") {
+          data = await api("/follow-up", "POST", {
+            max_results: numValue("singleCount"),
+            headless
+          });
         }
         resultBox.textContent = JSON.stringify(data, null, 2);
         closeRunModal();
@@ -550,6 +572,8 @@
       document.getElementById("metricMessages").textContent = stats.messages_sent ?? 0;
       document.getElementById("metricConnects").textContent = stats.connect_requested ?? 0;
       document.getElementById("metricConnected").textContent = stats.connected ?? 0;
+      document.getElementById("metricEmails").textContent = stats.emails_sent ?? 0;
+      document.getElementById("metricFollowups").textContent = stats.follow_ups_sent ?? 0;
       const busy = Boolean(status.control.busy);
       actionButtons.forEach(button => { button.disabled = busy; });
     }

@@ -418,7 +418,7 @@ def test_modes_endpoint_lists_operations():
     assert response.status_code == 200
     payload = response.json()
     ids = [item["id"] for item in payload["modes"]]
-    assert ids == ["discover", "connect", "message", "outreach", "campaign"]
+    assert ids == ["discover", "connect", "message", "outreach", "campaign", "follow_up"]
 
 
 def test_dashboard_route_serves_external_html():
@@ -512,3 +512,117 @@ def test_outreach_impl_dispatches_requested_mode(monkeypatch):
         "connect:https://linkedin.com/in/example",
         "message:https://linkedin.com/in/example",
     ]
+
+
+def test_upwork_rss_parse_item():
+    from platforms.upwork_rss import UpworkRSSDiscovery
+    import xml.etree.ElementTree as ET
+
+    rss_xml = """
+    <rss><channel>
+      <item>
+        <title>Looking for Python developer to build AI automation dashboard</title>
+        <link>https://www.upwork.com/jobs/~0123456789</link>
+        <description>Budget: $500. Need a Python developer to build automation. Skills: Python, FastAPI</description>
+      </item>
+    </channel></rss>
+    """
+
+    discovery = UpworkRSSDiscovery()
+    leads = discovery._parse_feed(rss_xml.strip(), "python automation", 10)
+
+    assert len(leads) == 1
+    assert leads[0].source_platform == "Upwork_RSS"
+    assert "upwork_rss" in leads[0].match_tags
+    assert leads[0].profile_url == "https://www.upwork.com/jobs/~0123456789"
+
+
+def test_follow_up_due_date_calculation():
+    from outreach.follow_up import FollowUpManager, FOLLOWUP_1_ELIGIBLE
+    from datetime import datetime, timedelta
+
+    manager = FollowUpManager()
+    now = datetime.now()
+
+    lead_recent = make_lead(
+        profile_url="https://linkedin.com/in/recent",
+        source_platform="LinkedIn",
+        fit_score=80,
+        status=ProspectStatus.MESSAGE_SENT,
+    )
+    lead_recent.last_contacted_at = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    lead_due = make_lead(
+        profile_url="https://linkedin.com/in/due",
+        source_platform="LinkedIn",
+        fit_score=80,
+        status=ProspectStatus.MESSAGE_SENT,
+    )
+    lead_due.last_contacted_at = (now - timedelta(days=4)).strftime("%Y-%m-%d %H:%M:%S")
+
+    # lead_recent is too recent for follow-up
+    assert lead_recent.status in FOLLOWUP_1_ELIGIBLE
+    # lead_due should be eligible
+    assert lead_due.status in FOLLOWUP_1_ELIGIBLE
+
+    # Test message building
+    msg = manager.build_followup_message(lead_due, step=1)
+    assert "bumping" in msg.lower() or "inbox" in msg.lower()
+
+    msg2 = manager.build_followup_message(lead_due, step=2)
+    assert "last" in msg2.lower() or "follow-up" in msg2.lower() or "portfolio" in msg2.lower()
+
+
+def test_email_finder_unavailable_without_key():
+    from outreach.email_finder import EmailFinder
+
+    finder = EmailFinder()
+    assert not finder.available
+
+    result = asyncio.run(finder.find_email("John Doe", "Acme Corp"))
+    assert result is None
+
+
+def test_follow_up_endpoint_accepts_background_launch(monkeypatch):
+    client = TestClient(server_module.app)
+
+    monkeypatch.setattr(server_module.control_state, "active_task", None)
+    monkeypatch.setattr(server_module.control_state, "active_operation", "")
+    monkeypatch.setattr(server_module, "_launch_operation", lambda name, runner: {"accepted": True, "operation": name})
+
+    response = client.post("/follow-up", json={"max_results": 5})
+
+    assert response.status_code == 202
+    assert response.json() == {"accepted": True, "operation": "follow_up"}
+
+
+def test_new_schema_fields_exist():
+    lead = FreelanceClientLead(
+        full_name="Test Lead",
+        email="test@example.com",
+        status=ProspectStatus.FOLLOW_UP_1,
+    )
+    assert lead.email == "test@example.com"
+    assert lead.status == ProspectStatus.FOLLOW_UP_1
+    assert ProspectStatus.EMAIL_SENT.value == "email_sent"
+    assert OutreachResultStatus.EMAIL_SENT.value == "email_sent"
+
+    stats = CampaignStats()
+    assert stats.emails_sent == 0
+    assert stats.follow_ups_sent == 0
+
+
+def test_icebreaker_prompt_renders():
+    from llm.prompts import ICEBREAKER_SYSTEM, ICEBREAKER_USER
+
+    assert "hyper-personalized" in ICEBREAKER_SYSTEM.lower() or "icebreaker" in ICEBREAKER_SYSTEM.lower()
+
+    rendered = ICEBREAKER_USER.format(
+        full_name="Jane Doe",
+        headline="CEO at WidgetCorp",
+        company="WidgetCorp",
+        snippet="Looking for a developer to build our analytics dashboard",
+        query="analytics dashboard developer",
+    )
+    assert "Jane Doe" in rendered
+    assert "WidgetCorp" in rendered

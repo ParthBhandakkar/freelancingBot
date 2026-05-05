@@ -10,7 +10,7 @@ from loguru import logger
 from browser.engine import BrowserEngine
 from config import settings
 from llm.client import llm_client
-from llm.prompts import CLIENT_MESSAGE_SYSTEM, CLIENT_MESSAGE_USER
+from llm.prompts import CLIENT_MESSAGE_SYSTEM, CLIENT_MESSAGE_USER, ICEBREAKER_SYSTEM, ICEBREAKER_USER
 from models.schemas import FreelanceClientLead, OutreachResult, OutreachResultStatus
 from outreach.linkedin_profile_signals import (
     JS_HEADER_SHOWS_2ND_OR_3RD,
@@ -192,7 +192,7 @@ class ClientOutreachMessenger:
                 notes="Profile is connected, but Message is not available on the page.",
             )
 
-        message = await self._build_message(lead, use_llm=use_llm)
+        message = await self._build_message(lead, use_llm=use_llm, use_pitch=True)
         sent, notes = await self._send_message_flow(message)
         if sent:
             return OutreachResult(
@@ -220,16 +220,21 @@ class ClientOutreachMessenger:
         await self._dismiss_popups()
         await self._scroll_to_profile_top()
 
-    async def _build_message(self, lead: FreelanceClientLead, *, use_llm: bool) -> str:
-        message = self._render_template(
-            settings.outreach_message,
-            lead,
-            default_signature=False,
-        )
+    async def _build_message(self, lead: FreelanceClientLead, *, use_llm: bool, use_pitch: bool = False) -> str:
+        if use_pitch and settings.soft_pitch_enabled:
+            template = settings.outreach_pitch_message_template
+        else:
+            template = settings.outreach_message
+        message = self._render_template(template, lead, default_signature=False)
         if use_llm and settings.has_llm_key and await llm_client.is_available():
             drafted = await self._draft_message_with_llm(lead)
             if drafted:
                 message = drafted
+            else:
+                # Try icebreaker prepend on template
+                icebreaker = await self._generate_icebreaker(lead)
+                if icebreaker:
+                    message = f"{icebreaker} {message}"
         return clean_text(message)
 
     def _truncate_connect_note(self, text: str) -> str:
@@ -262,6 +267,34 @@ class ClientOutreachMessenger:
                     return clean_text(text)
         except Exception as exc:
             logger.debug("LLM outreach generation failed: {}", exc)
+        return ""
+
+    async def _generate_icebreaker(self, lead: FreelanceClientLead) -> str:
+        """Generate a hyper-personalized icebreaker using the LLM."""
+        if not settings.has_llm_key:
+            return ""
+        try:
+            prompt = ICEBREAKER_USER.format(
+                full_name=lead.full_name,
+                headline=lead.headline,
+                company=lead.company or "their company",
+                snippet=(lead.profile_snippet or lead.notes or "")[:300],
+                query=lead.matched_query or "",
+            )
+            response = await llm_client.chat_json(
+                system_prompt=ICEBREAKER_SYSTEM,
+                user_message=prompt,
+                max_tokens=200,
+                temperature=0.4,
+                request_name="icebreaker",
+            )
+            if isinstance(response, dict):
+                icebreaker = str(response.get("icebreaker", "")).strip()
+                if icebreaker and len(icebreaker) > 10:
+                    logger.debug("Generated icebreaker: {}", icebreaker[:100])
+                    return icebreaker
+        except Exception as exc:
+            logger.debug("Icebreaker generation failed: {}", exc)
         return ""
 
     def _render_template(

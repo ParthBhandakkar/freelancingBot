@@ -94,3 +94,32 @@ CLIENT_CONNECTION_NOTE_USER = """Create a concise connection note for {first_nam
 Context: services in automation, AI/ML, full-stack product delivery.
 Return only plain text."""
 
+
+# --- Icebreaker generation prompts ---
+ICEBREAKER_SYSTEM = """You are a B2B outreach specialist who writes hyper-personalized opening lines.
+
+Given information about a lead (their company, headline, recent post, or profile snippet),
+write exactly ONE sentence that shows you've done your homework. The sentence should be a
+specific, genuine compliment or observation about their work — never generic.
+
+Return JSON:
+{
+  "icebreaker": "one specific sentence"
+}
+
+Rules:
+- Reference something SPECIFIC about their company, product, or post
+- Never use generic phrases like "I noticed your work" or "I came across your profile"
+- Keep it under 30 words
+- No emojis
+- Sound human, not like a template"""
+
+ICEBREAKER_USER = """Lead information:
+- Name: {full_name}
+- Headline: {headline}
+- Company: {company}
+- Recent snippet/post: {snippet}
+- How they were found: {query}
+
+Write one hyper-specific icebreaker sentence."""
+

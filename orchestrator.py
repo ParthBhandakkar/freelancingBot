@@ -11,9 +11,15 @@ from browser.engine import BrowserEngine
 from config import DATA_DIR, settings
 from linkedin.auth import LinkedInAuth
 from linkedin.client_search import LinkedInClientSearcher
+from linkedin.linkedin_post_search import LinkedInPostSearcher
 from llm.client import llm_client
 from platforms.discovery import PlatformDiscoveryService
+from platforms.upwork_rss import UpworkRSSDiscovery
+from platforms.yc_discovery import YCDiscovery
 from models.schemas import BotState, CampaignStats, FreelanceClientLead, OutreachResult, OutreachResultStatus, ProspectStatus
+from outreach.email_finder import email_finder
+from outreach.email_sender import email_sender
+from outreach.follow_up import FollowUpManager
 from outreach.messenger import ClientOutreachMessenger
 from utils.csv_exporter import append_leads, load_pending_leads, update_lead_status
 from utils.sheets_integration import OutreachSheetStore
@@ -27,8 +33,12 @@ class FreelancingOrchestrator:
         self.browser_started = False
         self.auth = LinkedInAuth(self.browser)
         self.searcher = LinkedInClientSearcher(self.browser)
+        self.post_searcher = LinkedInPostSearcher(self.browser)
         self.platform_searcher = PlatformDiscoveryService(self.browser)
+        self.upwork_rss = UpworkRSSDiscovery()
+        self.yc_discovery = YCDiscovery()
         self.messenger = ClientOutreachMessenger(self.browser)
+        self.follow_up_manager = FollowUpManager()
         self.sheet_store = OutreachSheetStore()
 
         self.state = BotState.IDLE
@@ -143,13 +153,29 @@ class FreelancingOrchestrator:
             await self._discover_impl(max_results=discovery_limit, platform_sources=discovery_sources)
             await human_delay(settings.search_delay_min, settings.search_delay_max)
             outputs = await self._outreach_impl(max_results=outreach_limit, mode="combined")
+            # Run follow-ups on previously contacted leads
+            followup_outputs = await self._follow_up_impl()
+            outputs.extend(followup_outputs)
             self.stats.session_end = datetime.now()
             self._write_session_report()
             logger.info(
-                "Campaign finished: discovered {}, outreached {}",
+                "Campaign finished: discovered {}, outreached {}, follow-ups {}",
                 self.stats.discovered,
                 self.stats.outreached,
+                self.stats.follow_ups_sent,
             )
+            return outputs
+        finally:
+            await self.stop(save_report=False, requested=False)
+            self.state = BotState.IDLE
+
+    async def follow_up(self, max_results: int | None = None) -> list[OutreachResult]:
+        """Run follow-up outreach on leads that haven't replied."""
+        await self.start(require_linkedin_login=True)
+        try:
+            outputs = await self._follow_up_impl(max_results=max_results)
+            self.stats.session_end = datetime.now()
+            self._write_session_report()
             return outputs
         finally:
             await self.stop(save_report=False, requested=False)
@@ -170,15 +196,31 @@ class FreelancingOrchestrator:
             linkedin_leads = await self.searcher.discover_clients(max_results=requested_limit)
             discovered.extend(linkedin_leads)
 
-        if enabled - {"linkedin"}:
+        if "linkedin_posts_native" in enabled:
+            post_leads = await self.post_searcher.discover_posts(max_results=requested_limit)
+            discovered.extend(post_leads)
+            logger.info("Native LinkedIn post search found {} leads", len(post_leads))
+
+        if "upwork_rss" in enabled:
+            rss_leads = await self.upwork_rss.discover(max_results=requested_limit)
+            discovered.extend(rss_leads)
+            logger.info("Upwork RSS found {} leads", len(rss_leads))
+
+        if "yc" in enabled:
+            yc_leads = await self.yc_discovery.discover(max_results=requested_limit)
+            discovered.extend(yc_leads)
+            logger.info("YC discovery found {} leads", len(yc_leads))
+
+        if enabled - {"linkedin", "linkedin_posts_native", "upwork_rss", "yc"}:
             external = await self.platform_searcher.discover(
                 max_results=requested_limit,
-                platform_sources=list(enabled - {"linkedin"}),
+                platform_sources=list(enabled - {"linkedin", "linkedin_posts_native", "upwork_rss", "yc"}),
             )
             discovered.extend(external)
 
         leads = self._dedupe_and_rank(discovered, limit=requested_limit)
         leads = await self._score_discovered_leads(leads)
+        leads = await self._enrich_emails(leads)
         leads = self._dedupe_and_rank(leads, limit=requested_limit)
 
         added, _ = append_leads(leads, settings.lead_store_file)
@@ -221,11 +263,31 @@ class FreelancingOrchestrator:
                 await self._pause_loop()
 
             if lead.source_platform.lower() != "linkedin":
+                # Try email outreach for non-LinkedIn leads
+                if lead.email and email_sender.available:
+                    result = await email_sender.send_cold_email(lead)
+                    outputs.append(result)
+                    self.stats.results.append(result)
+                    if result.status == OutreachResultStatus.EMAIL_SENT:
+                        self.stats.emails_sent += 1
+                        update_lead_status(
+                            lead.profile_url,
+                            status=ProspectStatus.EMAIL_SENT,
+                            outreach_action=result.action_taken,
+                            outreach_note=result.message_text,
+                            last_contacted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            notes=result.notes,
+                        )
+                        self._update_stats_in_sheet(lead, result.status, result.action_taken, result.notes, message_text=result.message_text)
+                    else:
+                        self.stats.skipped += 1
+                    continue
+
                 result = OutreachResult(
                     lead=lead,
                     status=OutreachResultStatus.SKIPPED,
                     action_taken="unsupported_source",
-                    notes="Outreach flow currently supports LinkedIn messaging only. Kept for manual follow-up.",
+                    notes="Non-LinkedIn lead without email. Kept for manual follow-up.",
                 )
                 outputs.append(result)
                 self.stats.results.append(result)
@@ -332,9 +394,10 @@ class FreelancingOrchestrator:
             filename=settings.lead_store_file,
             min_score=0,
         )
-        leads = [lead for lead in leads if lead.source_platform.lower() == "linkedin"]
+        # Keep all leads — LinkedIn for messaging, others for email outreach
         leads.sort(
             key=lambda lead: (
+                lead.source_platform.lower() != "linkedin",
                 lead.status != ProspectStatus.CONNECTED,
                 -lead.fit_score,
                 lead.discovered_at,
@@ -357,6 +420,73 @@ class FreelancingOrchestrator:
             unique.append(lead)
         unique.sort(key=lambda item: item.fit_score, reverse=True)
         return unique[: limit or settings.max_discovery_results]
+
+    async def _enrich_emails(self, leads: list[FreelanceClientLead]) -> list[FreelanceClientLead]:
+        """Try to find email addresses for leads using Hunter.io."""
+        if not email_finder.available:
+            return leads
+
+        for lead in leads:
+            if lead.email:
+                continue
+            if not lead.company or lead.fit_score < settings.min_fit_score:
+                continue
+            found = await email_finder.find_email(lead.full_name, lead.company)
+            if found:
+                lead.email = found
+        return leads
+
+    async def _follow_up_impl(
+        self, max_results: int | None = None
+    ) -> list[OutreachResult]:
+        """Send follow-up messages to leads that haven't replied."""
+        self.state = BotState.FOLLOWING_UP
+        due = self.follow_up_manager.get_due_followups(
+            filename=settings.lead_store_file,
+            max_results=max_results,
+        )
+        outputs: list[OutreachResult] = []
+
+        for lead, step in due:
+            if self._stop_requested:
+                break
+
+            message = self.follow_up_manager.build_followup_message(lead, step)
+            new_status = self.follow_up_manager.next_status(lead, step)
+
+            # LinkedIn follow-up via messaging
+            if lead.source_platform.lower() == "linkedin":
+                result = await self.messenger.send_message_if_ready(lead)
+                if result.status == OutreachResultStatus.MESSAGE_SENT:
+                    self.stats.follow_ups_sent += 1
+                    update_lead_status(
+                        lead.profile_url,
+                        status=new_status,
+                        outreach_action=f"follow_up_{step}",
+                        outreach_note=message,
+                        last_contacted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        notes=f"Follow-up {step} sent.",
+                    )
+                outputs.append(result)
+            # Email follow-up
+            elif lead.email and email_sender.available:
+                result = await email_sender.send_cold_email(lead, sequence_step=step + 1)
+                if result.status == OutreachResultStatus.EMAIL_SENT:
+                    self.stats.follow_ups_sent += 1
+                    update_lead_status(
+                        lead.profile_url,
+                        status=new_status,
+                        outreach_action=f"email_follow_up_{step}",
+                        outreach_note=result.message_text,
+                        last_contacted_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        notes=f"Email follow-up {step} sent.",
+                    )
+                outputs.append(result)
+
+            await human_delay(settings.outreach_delay_min, settings.outreach_delay_max)
+
+        logger.info("Follow-up complete: {} sent", self.stats.follow_ups_sent)
+        return outputs
 
     def _update_stats_in_sheet(
         self,

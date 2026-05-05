@@ -15,6 +15,12 @@ class ProspectStatus(str, Enum):
     MESSAGE_SENT = "message_sent"
     CONNECT_REQUESTED = "connect_requested"
     CONNECTED = "connected"
+    FOLLOW_UP_1 = "follow_up_1"
+    FOLLOW_UP_2 = "follow_up_2"
+    FOLLOW_UP_DONE = "follow_up_done"
+    EMAIL_SENT = "email_sent"
+    EMAIL_FOLLOW_UP_1 = "email_follow_up_1"
+    EMAIL_FOLLOW_UP_2 = "email_follow_up_2"
     SKIPPED = "skipped"
     FAILED = "failed"
 
@@ -23,6 +29,7 @@ class OutreachResultStatus(str, Enum):
     MESSAGE_SENT = "message_sent"
     CONNECT_REQUESTED = "connect_requested"
     CONNECTED = "connected"
+    EMAIL_SENT = "email_sent"
     SKIPPED = "skipped"
     FAILED = "failed"
     BLOCKED = "blocked"
@@ -33,6 +40,7 @@ class BotState(str, Enum):
     STARTING = "starting"
     DISCOVERING = "discovering"
     OUTREACHING = "outreaching"
+    FOLLOWING_UP = "following_up"
     STOPPED = "stopped"
     PAUSED = "paused"
     ERROR = "error"
@@ -46,6 +54,7 @@ class FreelanceClientLead(BaseModel):
     headline: str = ""
     company: str = ""
     location: str = ""
+    email: str = ""
     profile_url: str = ""
     post_link: str = ""
     profile_snippet: str = ""
@@ -80,6 +89,8 @@ class CampaignStats(BaseModel):
     messages_sent: int = 0
     connect_requested: int = 0
     connected: int = 0
+    emails_sent: int = 0
+    follow_ups_sent: int = 0
     failed: int = 0
     skipped: int = 0
     session_start: Optional[datetime] = None

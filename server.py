@@ -110,6 +110,13 @@ def _available_modes() -> list[dict[str, Any]]:
             "sends_outreach": True,
             "browser_required": True,
         },
+        {
+            "id": "follow_up",
+            "label": "Follow Up",
+            "description": "Send follow-up messages to leads that were contacted but haven't replied.",
+            "sends_outreach": True,
+            "browser_required": True,
+        },
     ]
 
 
@@ -222,7 +229,7 @@ def _guard_operation_start(name: str) -> None:
             status_code=409,
             detail=f"Another operation is already running: {control_state.active_operation}",
         )
-    if name in {"connect", "message", "outreach", "campaign"} and not BrowserEngine.is_available():
+    if name in {"connect", "message", "outreach", "campaign", "follow_up"} and not BrowserEngine.is_available():
         raise HTTPException(
             status_code=400,
             detail="LinkedIn browser automation requires the local agent-browser runtime to be available.",
@@ -308,6 +315,12 @@ async def campaign(req: CampaignRequest) -> dict[str, Any]:
             discovery_sources=_normalise_sources(req.sources),
         ),
     )
+
+
+@app.post("/follow-up", status_code=202)
+async def follow_up(req: OutreachRequest) -> dict[str, Any]:
+    _apply_headless(req.headless)
+    return _launch_operation("follow_up", lambda: orchestrator.follow_up(req.max_results))
 
 
 @app.post("/pause")
