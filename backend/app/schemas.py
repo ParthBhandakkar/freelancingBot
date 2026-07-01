@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime
 
 
@@ -59,9 +59,110 @@ class LeadOut(BaseModel):
     asset_url: Optional[str] = None
     outreach_message: Optional[str] = None
     response: Optional[str] = "pending"
+    lead_score: Optional[int] = 0
+    intent_signals: Optional[str] = None
     contacted_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeadAnalysisCreate(BaseModel):
+    lead_id: int
+
+
+class LeadAnalysisOut(BaseModel):
+    id: int
+    lead_id: int
+    tech_stack: Optional[Any] = None
+    social_links: Optional[Any] = None
+    review_snippets: Optional[list] = None
+    business_hours: Optional[Any] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    social_metrics: Optional[Any] = None
+    competitor_insights: Optional[Any] = None
+    keyword_signals: Optional[list] = None
+    analysis_date: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OutreachTemplateCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    subject: str
+    body: str
+    variables: Optional[list] = None
+    channel: Optional[str] = "email"
+
+
+class OutreachTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    variables: Optional[list] = None
+    channel: Optional[str] = None
+
+
+class OutreachTemplateOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    subject: str
+    body: str
+    variables: Optional[Any] = None
+    channel: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OutreachSequenceStepCreate(BaseModel):
+    step_order: int
+    action_type: str
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    delay_days: int = 1
+
+
+class OutreachSequenceStepOut(BaseModel):
+    id: int
+    sequence_id: int
+    step_order: int
+    action_type: str
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    delay_days: int
+    status: str
+    sent_at: Optional[datetime] = None
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class OutreachSequenceCreate(BaseModel):
+    lead_id: int
+    name: str = "Default Sequence"
+    steps: list[OutreachSequenceStepCreate]
+
+
+class OutreachSequenceOut(BaseModel):
+    id: int
+    lead_id: int
+    name: str
+    active: bool
+    current_step: int
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    steps: list[OutreachSequenceStepOut] = []
 
     class Config:
         from_attributes = True

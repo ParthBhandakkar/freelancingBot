@@ -6,6 +6,7 @@ const tabs = [
   { id: 'finder', label: 'Business Finder', icon: '🔍' },
   { id: 'analyzer', label: 'Website Analyzer', icon: '🌐' },
   { id: 'manual', label: 'Add Manually', icon: '✏️' },
+  { id: 'competitors', label: 'Competitors', icon: '🏢' },
 ]
 
 export default function Search() {
@@ -16,7 +17,7 @@ export default function Search() {
     <div>
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Find & Add Leads</h1>
 
-      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -33,6 +34,7 @@ export default function Search() {
       {activeTab === 'finder' && <FinderTab navigate={navigate} />}
       {activeTab === 'analyzer' && <AnalyzerTab navigate={navigate} />}
       {activeTab === 'manual' && <ManualTab navigate={navigate} />}
+      {activeTab === 'competitors' && <CompetitorTab />}
     </div>
   )
 }
@@ -41,6 +43,7 @@ function FinderTab({ navigate }) {
   const [city, setCity] = useState('')
   const [niche, setNiche] = useState('')
   const [suggestedNiches, setSuggestedNiches] = useState([])
+  const [source, setSource] = useState('auto')
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
@@ -56,7 +59,7 @@ function FinderTab({ navigate }) {
     setError('')
     setResults(null)
     try {
-      const data = await api.findBusinesses(city, niche)
+      const data = await api.findBusinesses(city, niche, 20, source)
       setResults(data)
     } catch (e) {
       setError(e.message)
@@ -139,6 +142,24 @@ function FinderTab({ navigate }) {
               ))}
             </div>
           </div>
+          <div>
+            <label className="block text-sm text-gray-500 mb-1">Data Source</label>
+            <div className="flex gap-2">
+              {[
+                { id: 'auto', label: 'Auto' },
+                { id: 'google', label: 'Google' },
+                { id: 'yelp', label: 'Yelp' },
+                { id: 'sample', label: 'Sample' },
+              ].map((s) => (
+                <button key={s.id} onClick={() => setSource(s.id)}
+                  className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                    source === s.id ? 'bg-blue-100 border-blue-300 text-blue-700' : 'border-gray-200 text-gray-500 hover:border-blue-300'
+                  }`}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <button onClick={handleSearch} disabled={searching || !city.trim()}
             className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
             {searching ? 'Searching...' : 'Find Businesses'}
@@ -166,8 +187,11 @@ function FinderTab({ navigate }) {
                 </p>
                 {results.source_type === 'sample_data' && (
                   <p className="text-xs text-amber-600 mt-1">
-                    Showing sample data. Set <code className="bg-amber-100 px-1 rounded">GOOGLE_API_KEY</code> in backend/.env for real businesses.
+                    Showing sample data. Set <code className="bg-amber-100 px-1 rounded">GOOGLE_API_KEY</code> or <code className="bg-amber-100 px-1 rounded">YELP_API_KEY</code> for real businesses.
                   </p>
+                )}
+                {results.source_type === 'yelp' && (
+                  <p className="text-xs text-green-600 mt-1">Source: Yelp</p>
                 )}
               </div>
               {results.total > 0 && (
@@ -187,18 +211,27 @@ function FinderTab({ navigate }) {
               <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
                 {results.results.map((biz, i) => (
                   <div key={i} className="px-4 py-3 hover:bg-gray-50 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-800">{biz.name}</p>
                       <div className="text-xs text-gray-500 space-y-0.5 mt-0.5">
                         {biz.niche && <span className="inline-block px-1.5 py-0.5 bg-gray-100 rounded text-xs mr-1">{biz.niche}</span>}
+                        {biz.intent_score > 0 && (
+                          <span className="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs mr-1">
+                            Score: {biz.intent_score}
+                          </span>
+                        )}
                         {biz.address && <p>{biz.address}</p>}
                         {biz.phone && <p>📞 {biz.phone}</p>}
+                        {biz.rating && <p>⭐ {biz.rating} ({biz.total_ratings} reviews)</p>}
+                        {biz.price_range && <p>💰 {biz.price_range}</p>}
                         {biz.website_url && (
                           <a href={biz.website_url} target="_blank" className="text-blue-600 hover:underline block truncate">
                             🌐 {biz.website_url}
                           </a>
                         )}
-                        {biz.rating && <p>⭐ {biz.rating} ({biz.total_ratings} reviews)</p>}
+                        {biz.intent_matches?.length > 0 && (
+                          <p className="text-green-600">🎯 Signals: {biz.intent_matches.slice(0, 3).join(', ')}</p>
+                        )}
                       </div>
                     </div>
                     <button onClick={() => handleImport(biz)} disabled={importing === biz.name}
@@ -218,6 +251,7 @@ function FinderTab({ navigate }) {
 
 function AnalyzerTab({ navigate }) {
   const [url, setUrl] = useState('')
+  const [deep, setDeep] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
@@ -230,7 +264,7 @@ function AnalyzerTab({ navigate }) {
     setAnalysisError('')
     setAnalysis(null)
     try {
-      const result = await api.analyzeWebsite(url)
+      const result = await api.analyzeWebsite(url, deep)
       setAnalysis(result)
       setForm((prev) => ({
         ...prev,
@@ -247,7 +281,7 @@ function AnalyzerTab({ navigate }) {
     e.preventDefault()
     setAdding(true)
     try {
-      const lead = await api.createLead({
+      const leadData = {
         name: form.name || 'Unknown',
         business_name: form.business_name || url,
         platform: 'website',
@@ -257,7 +291,8 @@ function AnalyzerTab({ navigate }) {
         flaws: analysis?.issues?.join('\n') || '',
         analysis_notes: analysis?.meta_description || '',
         online_presence_score: analysis?.score || 0,
-      })
+      }
+      const lead = await api.createLead(leadData)
       navigate(`/leads/${lead.id}`)
     } catch (e) {
       alert('Error: ' + e.message)
@@ -271,7 +306,7 @@ function AnalyzerTab({ navigate }) {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 className="font-semibold text-gray-700 mb-4">Analyze a Website</h2>
         <p className="text-sm text-gray-500 mb-4">Enter a business URL to scan for issues and get a score.</p>
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-3">
           <input type="url" value={url} onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -280,6 +315,10 @@ function AnalyzerTab({ navigate }) {
             {analyzing ? '...' : 'Analyze'}
           </button>
         </div>
+        <label className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+          <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />
+          Deep analysis (tech stack, social links)
+        </label>
         {analyzing && <div className="text-center py-8 text-gray-400">Analyzing...</div>}
         {analysisError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4">{analysisError}</div>}
         {analysis && (
@@ -310,6 +349,39 @@ function AnalyzerTab({ navigate }) {
               </div>
             ) : (
               <p className="text-sm text-green-600">No issues found! Great website.</p>
+            )}
+            {analysis.tech_stack && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-sm font-medium text-gray-700 mb-2">Tech Stack</p>
+                <div className="flex flex-wrap gap-1">
+                  {analysis.tech_stack.cms?.map((t) => (
+                    <span key={t} className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">{t}</span>
+                  ))}
+                  {analysis.tech_stack.frameworks?.map((t) => (
+                    <span key={t} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{t}</span>
+                  ))}
+                  {analysis.tech_stack.ecommerce?.map((t) => (
+                    <span key={t} className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">{t}</span>
+                  ))}
+                </div>
+                {analysis.tech_stack.analytics_tools?.length > 0 && (
+                  <p className="text-xs text-gray-400 mt-1">Analytics: {analysis.tech_stack.analytics_tools.join(', ')}</p>
+                )}
+              </div>
+            )}
+            {analysis.social_links && Object.keys(analysis.social_links).length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-sm font-medium text-gray-700 mb-2">Social Links Found</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(analysis.social_links).map(([platform, links]) => (
+                    links.length > 0 && (
+                      <span key={platform} className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                        {platform} ({links.length})
+                      </span>
+                    )
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -382,6 +454,8 @@ function ManualTab({ navigate }) {
               <option value="linkedin">LinkedIn</option>
               <option value="facebook">Facebook</option>
               <option value="website">Website</option>
+              <option value="google_maps">Google Maps</option>
+              <option value="yelp">Yelp</option>
               <option value="other">Other</option>
             </select>
             <input placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -401,6 +475,73 @@ function ManualTab({ navigate }) {
             {adding ? 'Adding...' : 'Add Lead'}
           </button>
         </form>
+      </div>
+    </div>
+  )
+}
+
+function CompetitorTab() {
+  const [niche, setNiche] = useState('')
+  const [city, setCity] = useState('')
+  const [exclude, setExclude] = useState('')
+  const [results, setResults] = useState(null)
+  const [searching, setSearching] = useState(false)
+
+  const handleSearch = async () => {
+    if (!niche.trim() || !city.trim()) return
+    setSearching(true)
+    try {
+      const data = await api.findCompetitors(niche, city, exclude)
+      setResults(data)
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 className="font-semibold text-gray-700 mb-4">Find Competitors</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          See who competes with a business in a given niche and city.
+        </p>
+        <div className="space-y-3">
+          <input type="text" value={niche} onChange={(e) => setNiche(e.target.value)}
+            placeholder="Niche (e.g. bakery, salon)" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="text" value={city} onChange={(e) => setCity(e.target.value)}
+            placeholder="City" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <input type="text" value={exclude} onChange={(e) => setExclude(e.target.value)}
+            placeholder="Exclude business name (optional)" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <button onClick={handleSearch} disabled={searching || !niche.trim() || !city.trim()}
+            className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
+            {searching ? 'Searching...' : 'Find Competitors'}
+          </button>
+        </div>
+      </div>
+      <div className="lg:col-span-2">
+        {results && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-4 border-b border-gray-100">
+              <p className="text-sm text-gray-600">
+                Found <strong>{results.total}</strong> competitors for <strong>{results.niche}</strong> in <strong>{results.city}</strong>
+              </p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {results.results.map((comp, i) => (
+                <div key={i} className="px-4 py-3 flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{comp.name}</p>
+                    <p className="text-xs text-gray-500">{comp.address}</p>
+                    {comp.rating && <p className="text-xs text-gray-500">⭐ {comp.rating} ({comp.total_ratings} reviews)</p>}
+                  </div>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">{comp.source}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

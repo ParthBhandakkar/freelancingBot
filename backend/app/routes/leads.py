@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import Optional
 from ..database import get_db
 from ..models import Lead
@@ -15,6 +16,9 @@ def list_leads(
     status: Optional[str] = None,
     platform: Optional[str] = None,
     search: Optional[str] = None,
+    min_score: Optional[int] = None,
+    sort_by: Optional[str] = "created_at",
+    sort_dir: Optional[str] = "desc",
     db: Session = Depends(get_db),
 ):
     query = db.query(Lead)
@@ -29,7 +33,16 @@ def list_leads(
             | Lead.city.ilike(f"%{search}%")
             | Lead.niche.ilike(f"%{search}%")
         )
-    return query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()
+    if min_score is not None:
+        query = query.filter(Lead.lead_score >= min_score)
+
+    sort_col = getattr(Lead, sort_by, Lead.created_at)
+    if sort_dir == "asc":
+        query = query.order_by(sort_col.asc())
+    else:
+        query = query.order_by(sort_col.desc())
+
+    return query.offset(skip).limit(limit).all()
 
 
 @router.get("/{lead_id}", response_model=LeadOut)
@@ -69,3 +82,8 @@ def delete_lead(lead_id: int, db: Session = Depends(get_db)):
     db.delete(lead)
     db.commit()
     return {"message": "Lead deleted"}
+
+
+@router.get("/batch/delete")
+def batch_delete_leads(ids: str = Query(..., description="Comma-separated lead IDs")):
+    return {"message": "Use DELETE with individual IDs"}

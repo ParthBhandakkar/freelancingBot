@@ -25,6 +25,14 @@ FIRST_NAMES = ["Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh",
 BUSINESS_PREFIXES = ["The", "Shri", "Royal", "New", "Star", "City", "Prime", "Elite",
     "Golden", "Silver", "Modern", "Classic", "Fresh", "Green", "Best"]
 
+INTENT_KEYWORDS = [
+    "need", "looking for", "require", "help with",
+    "new business", "just started", "launching",
+    "growing", "expanding", "improve",
+    "website", "online", "digital",
+    "marketing", "social media", "seo",
+]
+
 
 def _generate_mock_businesses(city: str, niche: str, count: int = 20) -> list[dict]:
     """Generate realistic-looking sample businesses for demo/testing purposes."""
@@ -169,8 +177,37 @@ async def find_by_google_places(city: str, niche: str = "", limit: int = 20) -> 
 
 
 async def find_businesses(city: str, niche: str = "", limit: int = 20, use_sample: bool = True) -> list[dict]:
-    """Find businesses using Google Places API. Falls back to sample data if unavailable."""
+    """Find businesses using Google Places API. Falls back to Yelp, then sample data."""
     results = await find_by_google_places(city, niche, limit)
     if results:
         return results
+
+    from .yelp_finder import find_businesses_yelp
+    yelp_results = await find_businesses_yelp(city, niche, limit)
+    if yelp_results:
+        return yelp_results
+
     return _generate_mock_businesses(city, niche, min(limit, 20))
+
+
+def enrich_search_results(results: list[dict], intent_keywords: Optional[list[str]] = None) -> list[dict]:
+    """Enrich search results with lead scoring signals."""
+    kws = intent_keywords or INTENT_KEYWORDS
+    enriched = []
+    for biz in results:
+        biz_copy = dict(biz)
+        text_to_check = " ".join([
+            str(biz.get("name", "")),
+            str(biz.get("description", "")),
+            str(biz.get("types", [])),
+            str(biz.get("categories", [])),
+            str(biz.get("address", "")),
+        ]).lower()
+
+        matches = [kw for kw in kws if kw.lower() in text_to_check]
+        biz_copy["intent_matches"] = matches
+        biz_copy["intent_score"] = min(len(matches) * 15, 100)
+        enriched.append(biz_copy)
+
+    enriched.sort(key=lambda x: x["intent_score"], reverse=True)
+    return enriched

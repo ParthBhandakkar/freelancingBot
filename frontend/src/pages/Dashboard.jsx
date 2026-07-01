@@ -15,10 +15,17 @@ function StatCard({ label, value, color }) {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
+  const [scoreSummary, setScoreSummary] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.getDashboardStats().then(setStats).catch(console.error).finally(() => setLoading(false))
+    Promise.all([
+      api.getDashboardStats(),
+      api.getLeadScoreSummary().catch(() => null),
+    ]).then(([s, ss]) => {
+      setStats(s)
+      setScoreSummary(ss)
+    }).catch(console.error).finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin text-4xl">⏳</div></div>
@@ -58,6 +65,50 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {scoreSummary && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h3 className="font-semibold text-gray-700 mb-4">🎯 Lead Score Summary</h3>
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-green-600">High Intent (70+)</span>
+                  <span className="font-bold">{scoreSummary.high_intent}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="bg-green-500 h-2 rounded-full" style={{ width: `${stats.total_leads > 0 ? (scoreSummary.high_intent / stats.total_leads) * 100 : 0}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-yellow-600">Medium (30-69)</span>
+                  <span className="font-bold">{scoreSummary.medium_intent}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="bg-yellow-500 h-2 rounded-full" style={{ width: `${stats.total_leads > 0 ? (scoreSummary.medium_intent / stats.total_leads) * 100 : 0}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-red-600">Low (1-29)</span>
+                  <span className="font-bold">{scoreSummary.low_intent}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="bg-red-500 h-2 rounded-full" style={{ width: `${stats.total_leads > 0 ? (scoreSummary.low_intent / stats.total_leads) * 100 : 0}%` }} />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-400">Unscored</span>
+                  <span className="font-bold">{scoreSummary.unscored}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div className="bg-gray-400 h-2 rounded-full" style={{ width: `${stats.total_leads > 0 ? (scoreSummary.unscored / stats.total_leads) * 100 : 0}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <h3 className="font-semibold text-gray-700 mb-4">Leads by Platform</h3>
           <ResponsiveContainer width="100%" height={180}>
@@ -69,10 +120,12 @@ export default function Dashboard() {
             </PieChart>
           </ResponsiveContainer>
         </div>
+      </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <h3 className="font-semibold text-gray-700 mb-4">Leads by Status</h3>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={200}>
             <BarChart data={statusData}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 12 }} />
@@ -84,20 +137,20 @@ export default function Dashboard() {
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
 
-      {stats.leads_by_city.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <h3 className="font-semibold text-gray-700 mb-4">Top Cities</h3>
-          <div className="flex flex-wrap gap-3">
-            {stats.leads_by_city.map((item) => (
-              <span key={item.city} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm font-medium">
-                {item.city} ({item.count})
-              </span>
-            ))}
+        {stats.leads_by_city.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <h3 className="font-semibold text-gray-700 mb-4">Top Cities</h3>
+            <div className="flex flex-wrap gap-3">
+              {stats.leads_by_city.map((item) => (
+                <span key={item.city} className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm font-medium">
+                  {item.city} ({item.count})
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

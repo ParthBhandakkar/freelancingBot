@@ -4,22 +4,27 @@ from typing import Optional
 from ..database import get_db
 from ..models import Lead
 from ..schemas import LeadCreate, LeadOut
-from ..services.lead_finder import find_businesses
+from ..services.lead_finder import find_businesses, enrich_search_results, DEFAULT_NICHES
+from ..services.tech_analyzer import detect_tech_stack
+from ..services.social_auditor import find_social_links, estimate_social_metrics
+from ..services.competitor_finder import find_competitors_google_places
 import httpx
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
 @router.get("/analyze-website")
-async def analyze_website(url: str = Query(...)):
+async def analyze_website(url: str = Query(...), deep: bool = Query(False)):
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, follow_redirects=True)
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            resp = await client.get(url)
             resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
+            html_text = resp.text
+            soup = BeautifulSoup(html_text, "lxml")
 
         title = soup.title.string.strip() if soup.title and soup.title.string else "No title"
         meta_desc = ""
@@ -44,13 +49,20 @@ async def analyze_website(url: str = Query(...)):
         score -= len(issues) * 10
         score = max(0, min(100, score))
 
-        return {
+        result = {
             "url": url,
             "title": title,
             "meta_description": meta_desc,
             "score": score,
             "issues": issues,
         }
+
+        if deep:
+            result["tech_stack"] = detect_tech_stack(html_text)
+            result["social_links"] = find_social_links(html_text, url)
+            result["social_metrics"] = estimate_social_metrics(result["social_links"])
+
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to analyze website: {str(e)}")
 
@@ -60,26 +72,56 @@ async def search_businesses(
     city: str = Query(..., description="City name"),
     niche: str = Query("", description="Business type (bakery, salon, gym, etc.)"),
     limit: int = Query(20, ge=1, le=50),
+    source: str = Query("auto", description="Data source: auto, google, yelp, sample"),
 ):
-    """Find businesses. Tries Google Places first (if key set), always falls back to sample data."""
+    """Find businesses. Tries multiple sources and returns enriched results."""
     try:
-        results = await find_businesses(city, niche, limit, use_sample=True)
-        source = results[0].get("source", "sample_data") if results else "sample_data"
+        if source == "google":
+            from ..services.lead_finder import find_by_google_places
+            results = await find_by_google_places(city, niche, limit)
+        elif source == "yelp":
+            from ..services.yelp_finder import find_businesses_yelp
+            results = await find_businesses_yelp(city, niche, limit)
+        else:
+            results = await find_businesses(city, niche, limit, use_sample=True)
+
+        enriched = enrich_search_results(results)
+
+        source_type = enriched[0].get("source", "sample_data") if enriched else "none"
         return {
             "city": city,
             "niche": niche,
-            "total": len(results),
-            "source_type": source,
-            "results": results,
+            "total": len(enriched),
+            "source_type": source_type,
+            "results": enriched,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to find businesses: {str(e)}")
 
 
+@router.get("/find-competitors")
+async def search_competitors(
+    niche: str = Query(...),
+    city: str = Query(...),
+    exclude: str = Query(""),
+    limit: int = Query(10, ge=1, le=30),
+):
+    """Find competitors for a business in a city."""
+    try:
+        competitors = await find_competitors_google_places(niche, city, exclude, limit)
+        return {
+            "niche": niche,
+            "city": city,
+            "total": len(competitors),
+            "results": competitors,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to find competitors: {str(e)}")
+
+
 @router.get("/niches")
 def list_niches():
     """List all supported business niches."""
-    from ..services.lead_finder import DEFAULT_NICHES
     return {"default_niches": DEFAULT_NICHES}
 
 

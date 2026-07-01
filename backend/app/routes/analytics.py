@@ -54,3 +54,20 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         leads_by_status=leads_by_status,
         leads_by_city=leads_by_city,
     )
+
+
+@router.get("/lead-score-summary")
+def get_lead_score_summary(db: Session = Depends(get_db)):
+    high_score = db.query(Lead).filter(Lead.lead_score >= 70).count()
+    medium_score = db.query(Lead).filter(Lead.lead_score >= 30, Lead.lead_score < 70).count()
+    low_score = db.query(Lead).filter(Lead.lead_score > 0, Lead.lead_score < 30).count()
+    unscored = db.query(Lead).filter(
+        (Lead.lead_score == 0) | (Lead.lead_score.is_(None))
+    ).count()
+
+    return {
+        "high_intent": high_score,
+        "medium_intent": medium_score,
+        "low_intent": low_score,
+        "unscored": unscored,
+    }

@@ -23,15 +23,20 @@ export default function Leads() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [platformFilter, setPlatformFilter] = useState('')
+  const [minScore, setMinScore] = useState('')
+  const [sortBy, setSortBy] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', business_name: '', platform: 'instagram', profile_url: '', website_url: '', city: '', niche: '' })
 
   const loadLeads = () => {
     setLoading(true)
-    api.getLeads({ search, status: statusFilter, platform: platformFilter }).then(setLeads).catch(console.error).finally(() => setLoading(false))
+    const params = { search, status: statusFilter, platform: platformFilter, sort_by: sortBy, sort_dir: sortDir }
+    if (minScore) params.min_score = minScore
+    api.getLeads(params).then(setLeads).catch(console.error).finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadLeads() }, [search, statusFilter, platformFilter])
+  useEffect(() => { loadLeads() }, [search, statusFilter, platformFilter, minScore, sortBy, sortDir])
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -76,8 +81,26 @@ export default function Leads() {
           <option value="linkedin">LinkedIn</option>
           <option value="facebook">Facebook</option>
           <option value="website">Website</option>
+          <option value="google_maps">Google Maps</option>
+          <option value="yelp">Yelp</option>
           <option value="other">Other</option>
         </select>
+        <select value={minScore} onChange={(e) => setMinScore(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <option value="">Min Lead Score</option>
+          <option value="70">High (70+)</option>
+          <option value="30">Medium (30+)</option>
+          <option value="1">Any score</option>
+        </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <option value="created_at">Newest</option>
+          <option value="lead_score">Lead Score</option>
+          <option value="online_presence_score">Presence Score</option>
+          <option value="business_name">Name A-Z</option>
+        </select>
+        <button onClick={() => setSortDir(sortDir === 'desc' ? 'asc' : 'desc')}
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+          {sortDir === 'desc' ? '↓ Desc' : '↑ Asc'}
+        </button>
       </div>
 
       {showForm && (
@@ -95,6 +118,8 @@ export default function Leads() {
                   <option value="linkedin">LinkedIn</option>
                   <option value="facebook">Facebook</option>
                   <option value="website">Website</option>
+                  <option value="google_maps">Google Maps</option>
+                  <option value="yelp">Yelp</option>
                   <option value="other">Other</option>
                 </select>
                 <input placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -128,6 +153,7 @@ export default function Leads() {
                 <th className="px-4 py-3 font-medium">Platform</th>
                 <th className="px-4 py-3 font-medium">City</th>
                 <th className="px-4 py-3 font-medium">Score</th>
+                <th className="px-4 py-3 font-medium">Lead Score</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Response</th>
                 <th className="px-4 py-3 font-medium">Asset</th>
@@ -147,6 +173,16 @@ export default function Leads() {
                     <span className={`font-medium ${lead.online_presence_score >= 70 ? 'text-green-600' : lead.online_presence_score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
                       {lead.online_presence_score || '-'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {lead.lead_score > 0 ? (
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        lead.lead_score >= 70 ? 'bg-green-100 text-green-800' :
+                        lead.lead_score >= 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {lead.lead_score}
+                      </span>
+                    ) : <span className="text-gray-300">-</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[lead.status] || 'bg-gray-100'}`}>{lead.status}</span>

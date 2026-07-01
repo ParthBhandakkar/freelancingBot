@@ -5,6 +5,7 @@ const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: '📊' },
   { to: '/leads', label: 'Leads', icon: '👥' },
   { to: '/search', label: 'Find Leads', icon: '🔍' },
+  { to: '/outreach', label: 'Outreach', icon: '📧' },
 ]
 
 export default function Layout() {
