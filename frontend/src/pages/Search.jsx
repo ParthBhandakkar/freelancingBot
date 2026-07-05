@@ -80,9 +80,13 @@ function FinderTab({ navigate }) {
         email: biz.email || '',
         phone: biz.phone || '',
         city: biz.city || city,
+        address: biz.address || '',
         niche: biz.niche || niche || 'general',
         flaws: '',
         analysis_notes: biz.address ? `Address: ${biz.address}` : '',
+        total_ratings: biz.total_ratings || 0,
+        rating: biz.rating || 0,
+        source: biz.source || '',
       })
       navigate(`/leads/${lead.id}`)
     } catch (e) {
@@ -94,22 +98,32 @@ function FinderTab({ navigate }) {
 
   const handleImportAll = async () => {
     if (!results?.results?.length) return
+    const newBizs = results.results.filter(b => !b.already_imported)
+    if (!newBizs.length) { alert('All leads are already imported!'); return }
     let count = 0
-    for (const biz of results.results) {
+    let errors = 0
+    for (const biz of newBizs) {
       try {
         await api.createLead({
-          name: biz.name.split(' ')[0],
-          business_name: biz.business_name || biz.name,
+          name: (biz.name || biz.business_name || '').split(' ')[0] || 'Unknown',
+          business_name: biz.business_name || biz.name || 'Unknown',
           platform: 'website',
           website_url: biz.website_url || '',
           phone: biz.phone || '',
+          email: biz.email || '',
           city: biz.city || city,
+          address: biz.address || '',
           niche: biz.niche || niche || 'general',
+          total_ratings: biz.total_ratings || 0,
+          rating: biz.rating || 0,
+          source: biz.source || '',
         })
         count++
-      } catch (e) {}
+      } catch (e) {
+        errors++
+      }
     }
-    alert(`Imported ${count} leads!`)
+    alert(`Imported ${count} new lead(s)!${errors ? ` (${errors} failed)` : ''}`)
   }
 
   return (
@@ -149,7 +163,6 @@ function FinderTab({ navigate }) {
                 { id: 'auto', label: 'Auto' },
                 { id: 'google', label: 'Google' },
                 { id: 'yelp', label: 'Yelp' },
-                { id: 'sample', label: 'Sample' },
               ].map((s) => (
                 <button key={s.id} onClick={() => setSource(s.id)}
                   className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
@@ -185,19 +198,24 @@ function FinderTab({ navigate }) {
                   Found <span className="font-bold text-gray-800">{results.total}</span> businesses
                   {results.niche ? ` matching "${results.niche}"` : ''} in <strong>{results.city}</strong>
                 </p>
-                {results.source_type === 'sample_data' && (
+                {results.total === 0 && (
                   <p className="text-xs text-amber-600 mt-1">
-                    Showing sample data. Set <code className="bg-amber-100 px-1 rounded">GOOGLE_API_KEY</code> or <code className="bg-amber-100 px-1 rounded">YELP_API_KEY</code> for real businesses.
+                    No real data found. Check your <code className="bg-amber-100 px-1 rounded">GOOGLE_API_KEY</code> or <code className="bg-amber-100 px-1 rounded">YELP_API_KEY</code> in .env
                   </p>
                 )}
                 {results.source_type === 'yelp' && (
                   <p className="text-xs text-green-600 mt-1">Source: Yelp</p>
                 )}
+                {results.new_count >= 0 && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    {results.new_count} new · {results.dup_count} already imported
+                  </p>
+                )}
               </div>
-              {results.total > 0 && (
+              {results.total > 0 && results.new_count > 0 && (
                 <button onClick={handleImportAll}
                   className="shrink-0 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                  Import All
+                  Import {results.new_count} New
                 </button>
               )}
             </div>
@@ -210,33 +228,49 @@ function FinderTab({ navigate }) {
             ) : (
               <div className="divide-y divide-gray-100 max-h-[500px] overflow-y-auto">
                 {results.results.map((biz, i) => (
-                  <div key={i} className="px-4 py-3 hover:bg-gray-50 flex items-start justify-between gap-3">
+                  <div key={i} className={`px-4 py-3 flex items-start justify-between gap-3 ${biz.already_imported ? 'opacity-50 bg-gray-50' : 'hover:bg-gray-50'}`}>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-800">{biz.name}</p>
+                      <p className="text-sm font-medium text-gray-800">
+                        {biz.name}
+                        {biz.already_imported && <span className="ml-2 text-xs text-gray-400 bg-gray-200 px-1.5 py-0.5 rounded">Already imported</span>}
+                      </p>
                       <div className="text-xs text-gray-500 space-y-0.5 mt-0.5">
                         {biz.niche && <span className="inline-block px-1.5 py-0.5 bg-gray-100 rounded text-xs mr-1">{biz.niche}</span>}
-                        {biz.intent_score > 0 && (
-                          <span className="inline-block px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs mr-1">
-                            Score: {biz.intent_score}
+                        {biz.potential_score !== undefined && (
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs mr-1 font-medium ${
+                            biz.potential_score >= 60 ? 'bg-red-100 text-red-700' :
+                            biz.potential_score >= 35 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            Need Score: {biz.potential_score}
                           </span>
                         )}
                         {biz.address && <p>{biz.address}</p>}
                         {biz.phone && <p>📞 {biz.phone}</p>}
                         {biz.rating && <p>⭐ {biz.rating} ({biz.total_ratings} reviews)</p>}
                         {biz.price_range && <p>💰 {biz.price_range}</p>}
-                        {biz.website_url && (
+                        {biz.website_url ? (
                           <a href={biz.website_url} target="_blank" className="text-blue-600 hover:underline block truncate">
                             🌐 {biz.website_url}
                           </a>
+                        ) : (
+                          <p className="text-red-500 font-medium">❌ No website found</p>
                         )}
-                        {biz.intent_matches?.length > 0 && (
-                          <p className="text-green-600">🎯 Signals: {biz.intent_matches.slice(0, 3).join(', ')}</p>
+                        {biz.potential_signals?.length > 0 && (
+                          <p className="text-xs">
+                            {biz.potential_signals.slice(0, 3).map((s, j) => (
+                              <span key={j} className="inline-block mr-1 px-1 py-0.5 bg-blue-50 text-blue-600 rounded">{s}</span>
+                            ))}
+                          </p>
                         )}
                       </div>
                     </div>
-                    <button onClick={() => handleImport(biz)} disabled={importing === biz.name}
-                      className="shrink-0 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
-                      {importing === biz.name ? '...' : 'Import'}
+                    <button onClick={() => handleImport(biz)} disabled={importing === biz.name || biz.already_imported}
+                      className={`shrink-0 px-3 py-1.5 text-xs rounded-lg font-medium disabled:opacity-50 ${
+                        biz.already_imported
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}>
+                      {importing === biz.name ? '...' : biz.already_imported ? 'Imported' : 'Import'}
                     </button>
                   </div>
                 ))}

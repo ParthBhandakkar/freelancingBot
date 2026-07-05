@@ -56,9 +56,22 @@ export default function Leads() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Leads</h1>
-        <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
-          + Add Lead
-        </button>
+        <div className="flex gap-2">
+          <button onClick={async () => {
+            const result = await api.exportToSheets().catch(e => ({ error: e.message, success: false }));
+            if (result.success) {
+              const open = confirm(`Exported ${result.total_leads} leads to Google Sheets!\n\nOpen the sheet?`);
+              if (open) window.open(result.sheet_url, '_blank');
+            } else {
+              alert('Export failed: ' + (result.error || 'Unknown error'));
+            }
+          }} className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm">
+            📤 Export to Sheets
+          </button>
+          <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+            + Add Lead
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-5">
@@ -151,12 +164,13 @@ export default function Leads() {
               <tr className="bg-gray-50 text-gray-600 text-left">
                 <th className="px-4 py-3 font-medium">Name / Business</th>
                 <th className="px-4 py-3 font-medium">Platform</th>
-                <th className="px-4 py-3 font-medium">City</th>
+                <th className="px-4 py-3 font-medium">City / Address</th>
+                <th className="px-4 py-3 font-medium">Rating</th>
                 <th className="px-4 py-3 font-medium">Score</th>
                 <th className="px-4 py-3 font-medium">Lead Score</th>
+                <th className="px-4 py-3 font-medium">Signals</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Response</th>
-                <th className="px-4 py-3 font-medium">Asset</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
@@ -168,7 +182,15 @@ export default function Leads() {
                     <p className="text-gray-500 text-xs">{lead.business_name}</p>
                   </td>
                   <td className="px-4 py-3 text-gray-600 capitalize">{lead.platform}</td>
-                  <td className="px-4 py-3 text-gray-600">{lead.city || '-'}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">
+                    <p>{lead.city || '-'}</p>
+                    {lead.address && <p className="text-gray-400 truncate max-w-[150px]">{lead.address}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {lead.rating > 0 ? (
+                      <span className="text-sm">⭐ {lead.rating} <span className="text-gray-400">({lead.total_ratings})</span></span>
+                    ) : <span className="text-gray-300">-</span>}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`font-medium ${lead.online_presence_score >= 70 ? 'text-green-600' : lead.online_presence_score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
                       {lead.online_presence_score || '-'}
@@ -185,13 +207,25 @@ export default function Leads() {
                     ) : <span className="text-gray-300">-</span>}
                   </td>
                   <td className="px-4 py-3">
+                    {lead.intent_signals ? (
+                      <div className="flex flex-wrap gap-1">
+                        {lead.intent_signals.split(', ').slice(0, 3).map((s, j) => (
+                          <span key={j} className={`text-xs px-1.5 py-0.5 rounded ${
+                            s.includes('No website') ? 'bg-red-100 text-red-700' :
+                            s.includes('No contact') ? 'bg-orange-100 text-orange-700' :
+                            s.includes('Established') || s.includes('Growing') ? 'bg-green-100 text-green-700' :
+                            s.includes('Highly rated') ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-blue-50 text-blue-600'
+                          }`}>{s}</span>
+                        ))}
+                      </div>
+                    ) : <span className="text-gray-300">-</span>}
+                  </td>
+                  <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[lead.status] || 'bg-gray-100'}`}>{lead.status}</span>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${responseColors[lead.response] || 'bg-gray-100'}`}>{lead.response}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {lead.asset_generated ? <span className="text-green-600 text-lg">✓</span> : <span className="text-gray-300">-</span>}
                   </td>
                   <td className="px-4 py-3">
                     <button onClick={() => handleDelete(lead.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>

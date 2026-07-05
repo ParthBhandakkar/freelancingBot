@@ -32,21 +32,30 @@ export default function LeadDetail() {
           <div>
             <h1 className="text-2xl font-bold text-gray-800">{lead.name}</h1>
             <p className="text-gray-500">{lead.business_name} • <span className="capitalize">{lead.platform}</span>{lead.city ? ` • ${lead.city}` : ''}</p>
+            {lead.address && <p className="text-xs text-gray-400">{lead.address}</p>}
           </div>
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${lead.status === 'converted' ? 'bg-green-100 text-green-800' : lead.status === 'contacted' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
             {lead.status}
           </span>
         </div>
-        {lead.lead_score > 0 && (
-          <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-            lead.lead_score >= 70 ? 'bg-green-100 text-green-800' :
-            lead.lead_score >= 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'
-          }`}>
-            Lead Score: {lead.lead_score}
-          </span>
-        )}
+        <div className="flex items-center gap-3 mt-2">
+          {lead.lead_score > 0 && (
+            <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+              lead.lead_score >= 70 ? 'bg-green-100 text-green-800' :
+              lead.lead_score >= 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'
+            }`}>
+              Lead Score: {lead.lead_score}
+            </span>
+          )}
+          {lead.rating > 0 && (
+            <span className="text-xs text-gray-600">⭐ {lead.rating} ({lead.total_ratings} reviews)</span>
+          )}
+          {lead.source && (
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{lead.source}</span>
+          )}
+        </div>
         {lead.intent_signals && (
-          <p className="text-xs text-green-600 mt-1">Signals: {lead.intent_signals}</p>
+          <p className="text-xs text-green-600 mt-2">Signals: {lead.intent_signals}</p>
         )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mt-4">
           {lead.profile_url && <div><span className="text-gray-500">Profile:</span> <a href={lead.profile_url} target="_blank" className="text-blue-600 hover:underline">View</a></div>}

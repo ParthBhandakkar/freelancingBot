@@ -72,4 +72,6 @@ export const api = {
     let q = 'subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     return request('/outreach/send-email/' + leadId + '?' + q, { method: 'POST' });
   },
+
+  exportToSheets: () => request('/leads/export/sheets', { method: 'POST' }),
 };

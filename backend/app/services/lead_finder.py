@@ -1,8 +1,9 @@
 import os
 import re
 import httpx
-import random
 from typing import Optional
+from sqlalchemy.orm import Session
+from ..models import Lead
 
 DEFAULT_NICHES = [
     "bakery", "restaurant", "cafe", "salon", "gym", "grocery",
@@ -11,106 +12,8 @@ DEFAULT_NICHES = [
     "tutor", "yoga", "florist", "pet store", "mechanic", "plumber",
 ]
 
-CITIES = [
-    "Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai",
-    "Kolkata", "Pune", "Ahmedabad", "Jaipur", "Lucknow",
-    "New York", "Los Angeles", "Chicago", "London", "Toronto",
-    "Dubai", "Singapore", "Sydney", "Berlin", "Paris",
-]
-
-FIRST_NAMES = ["Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh", "Ayaan",
-    "Krishna", "Ishaan", "Anaya", "Diya", "Myra", "Sara", "Aanya", "Aadhya",
-    "Neha", "Priya", "Anita", "Ravi", "Vikram", "Raj", "Amit", "Sunita"]
-
-BUSINESS_PREFIXES = ["The", "Shri", "Royal", "New", "Star", "City", "Prime", "Elite",
-    "Golden", "Silver", "Modern", "Classic", "Fresh", "Green", "Best"]
-
-INTENT_KEYWORDS = [
-    "need", "looking for", "require", "help with",
-    "new business", "just started", "launching",
-    "growing", "expanding", "improve",
-    "website", "online", "digital",
-    "marketing", "social media", "seo",
-]
-
-
-def _generate_mock_businesses(city: str, niche: str, count: int = 20) -> list[dict]:
-    """Generate realistic-looking sample businesses for demo/testing purposes."""
-    niches = [niche] if niche else DEFAULT_NICHES
-    results = []
-    seen_names = set()
-    niche_labels = {
-        "bakery": ["Bakery", "Bakers", "Patisserie", "Cake Shop", "Bread House"],
-        "restaurant": ["Restaurant", "Dining", "Food Point", "Eatery", "Bistro"],
-        "cafe": ["Cafe", "Coffee House", "Coffee Shop", "Tea House", "Brew"],
-        "salon": ["Salon", "Unisex Salon", "Beauty Parlour", "Hair Studio", "Spa"],
-        "gym": ["Gym", "Fitness Centre", "Fitness Studio", "Wellness Center", "Training Hub"],
-        "grocery": ["Supermarket", "Grocery Store", "Department Store", "Mart", "General Store"],
-        "pharmacy": ["Pharmacy", "Medical Store", "Chemist", "Medi-Care", "Drug Store"],
-        "dentist": ["Dental Clinic", "Dentist", "Dental Care", "Smile Studio", "Dental Hospital"],
-        "doctor": ["Clinic", "Medical Centre", "Health Care", "Hospital", "Wellness Clinic"],
-        "hotel": ["Hotel", "Residency", "Inn", "Guest House", "Lodge"],
-        "bar": ["Bar", "Pub", "Lounge", "Wine Shop", "Microbrewery"],
-        "electronics": ["Electronics", "Digital Mart", "Gadget Store", "Mobile Point", "Tech Hub"],
-        "clothing": ["Fashion Store", "Clothing", "Garments", "Boutique", "Trends"],
-        "laundry": ["Laundry", "Dry Cleaners", "Wash & Fold", "Launderette", "Clean Home"],
-        "florist": ["Flowers", "Florist", "Flower Shop", "Petals", "Blooms"],
-        "pet store": ["Pet Store", "Pet Shop", "Pet Care", "Animal Hub", "Pets World"],
-        "mechanic": ["Auto Repair", "Garage", "Car Service", "Mechanic Shop", "Auto Care"],
-        "photographer": ["Photography", "Studio", "Photo House", "Captures", "Lens Studio"],
-        "real estate": ["Reality", "Estate Agents", "Properties", "Homes", "Realtors"],
-        "tutor": ["Tuition Centre", "Academy", "Learning Hub", "Tutorials", "Education Centre"],
-        "yoga": ["Yoga Centre", "Yoga Studio", "Wellness Hub", "Meditation Centre", "Fitness Yoga"],
-    }
-
-    labels = niche_labels.get(niche.lower(), [niche.title(), niche.title() + " Shop", niche.title() + " Centre", niche.title() + " House", niche.title() + " Hub"])
-
-    for i in range(count):
-        prefix = random.choice(BUSINESS_PREFIXES) if random.random() > 0.3 else ""
-        label = random.choice(labels)
-        name_parts = [p for p in [prefix, label] if p]
-        business_name = " ".join(name_parts)
-        if random.random() > 0.5:
-            business_name = f"{business_name} {random.choice(['', city]).strip()}".strip()
-        if business_name.lower() in seen_names:
-            business_name = f"{business_name} {i+1}"
-        seen_names.add(business_name.lower())
-
-        first_name = random.choice(FIRST_NAMES)
-        contact_name = first_name
-        phone = f"+91-{random.randint(70000, 99999)}-{random.randint(10000, 99999)}"
-        website = business_name.lower().replace(" ", "").replace("&", "and") + ".com"
-        website = re.sub(r'[^a-z0-9.]', '', website)
-
-        results.append({
-            "name": business_name,
-            "business_name": business_name,
-            "contact_name": contact_name,
-            "platform": "website",
-            "niche": niche or random.choice(niches),
-            "city": city,
-            "website_url": f"https://www.{website}",
-            "phone": phone,
-            "email": f"contact@{website}",
-            "address": f"{random.randint(1, 999)}, {random.choice(['Main Road', 'Market Road', 'Station Road', 'MG Road', 'Park Street'])}, {city}",
-            "rating": round(random.uniform(3.0, 5.0), 1),
-            "total_ratings": random.randint(10, 500),
-            "source": "sample_data",
-            "profile_url": "",
-        })
-
-    return results
-
 
 async def find_by_google_places(city: str, niche: str = "", limit: int = 20) -> list[dict]:
-    """Find real businesses using Google Places API.
-    
-    To use: Get a free API key from https://console.cloud.google.com
-    1. Create a project
-    2. Enable 'Places API' 
-    3. Create credentials (API key)
-    4. Set GOOGLE_API_KEY environment variable
-    """
     api_key = os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
         return []
@@ -176,8 +79,7 @@ async def find_by_google_places(city: str, niche: str = "", limit: int = 20) -> 
     return results
 
 
-async def find_businesses(city: str, niche: str = "", limit: int = 20, use_sample: bool = True) -> list[dict]:
-    """Find businesses using Google Places API. Falls back to Yelp, then sample data."""
+async def find_businesses(city: str, niche: str = "", limit: int = 20) -> list[dict]:
     results = await find_by_google_places(city, niche, limit)
     if results:
         return results
@@ -187,27 +89,90 @@ async def find_businesses(city: str, niche: str = "", limit: int = 20, use_sampl
     if yelp_results:
         return yelp_results
 
-    return _generate_mock_businesses(city, niche, min(limit, 20))
+    return []
 
 
-def enrich_search_results(results: list[dict], intent_keywords: Optional[list[str]] = None) -> list[dict]:
-    """Enrich search results with lead scoring signals."""
-    kws = intent_keywords or INTENT_KEYWORDS
+def calc_lead_potential(biz: dict) -> dict:
+    score = 0
+    signals = []
+
+    no_website = not biz.get("website_url")
+    if no_website:
+        score += 35
+        signals.append("No website (hot lead)")
+
+    has_phone = bool(biz.get("phone"))
+    has_email = bool(biz.get("email"))
+    if has_phone and not has_email:
+        score += 15
+        signals.append("Has phone, no email")
+    if not has_phone and not has_email:
+        score += 10
+        signals.append("No contact info found")
+
+    reviews = biz.get("total_ratings") or 0
+    rating = biz.get("rating") or 0
+    if reviews > 100:
+        score += 15
+        signals.append(f"Established ({reviews} reviews)")
+    elif reviews > 30:
+        score += 10
+        signals.append(f"Growing ({reviews} reviews)")
+    if rating >= 4.5 and reviews > 20:
+        score += 5
+        signals.append("Highly rated")
+
+    text_to_check = " ".join([
+        str(biz.get("name", "")),
+        str(biz.get("types", [])),
+        str(biz.get("address", "")),
+    ]).lower()
+
+    intent_kws = ["need", "looking for", "new business", "just started", "growing", "expanding"]
+    matches = [kw for kw in intent_kws if kw in text_to_check]
+    if matches:
+        score += min(len(matches) * 10, 20)
+        signals.extend(matches)
+
+    score = min(score, 100)
+    return {"potential_score": score, "signals": signals}
+
+
+def find_existing_leads(results: list[dict], db: Session) -> set:
+    existing = set()
+    for biz in results:
+        name = (biz.get("business_name") or biz.get("name") or "").strip()
+        city = (biz.get("city") or "").strip()
+        website = (biz.get("website_url") or "").strip()
+        if not name:
+            continue
+
+        dup = db.query(Lead).filter(Lead.business_name.ilike(f"%{name}%"))
+        if city:
+            dup = dup.filter(Lead.city.ilike(f"%{city}%"))
+        if dup.first():
+            existing.add(name)
+            continue
+
+        if website:
+            dup = db.query(Lead).filter(Lead.website_url.ilike(website)).first()
+            if dup:
+                existing.add(name)
+
+    return existing
+
+
+def enrich_search_results(results: list[dict], existing_names: set = None) -> list[dict]:
     enriched = []
+    existing = existing_names or set()
     for biz in results:
         biz_copy = dict(biz)
-        text_to_check = " ".join([
-            str(biz.get("name", "")),
-            str(biz.get("description", "")),
-            str(biz.get("types", [])),
-            str(biz.get("categories", [])),
-            str(biz.get("address", "")),
-        ]).lower()
-
-        matches = [kw for kw in kws if kw.lower() in text_to_check]
-        biz_copy["intent_matches"] = matches
-        biz_copy["intent_score"] = min(len(matches) * 15, 100)
+        potential = calc_lead_potential(biz)
+        biz_copy["potential_score"] = potential["potential_score"]
+        biz_copy["potential_signals"] = potential["signals"]
+        name_check = biz.get("name", "") in existing or biz.get("business_name", "") in existing
+        biz_copy["already_imported"] = name_check
         enriched.append(biz_copy)
 
-    enriched.sort(key=lambda x: x["intent_score"], reverse=True)
+    enriched.sort(key=lambda x: (x.get("already_imported", False), -x.get("potential_score", 0)))
     return enriched

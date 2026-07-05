@@ -1,10 +1,15 @@
+import os
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
 from ..database import get_db
 from ..models import Lead
 from ..schemas import LeadCreate, LeadUpdate, LeadOut
+from ..services.lead_finder import calc_lead_potential
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
@@ -55,10 +60,24 @@ def get_lead(lead_id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=LeadOut)
 def create_lead(data: LeadCreate, db: Session = Depends(get_db)):
+    if data.website_url:
+        existing = db.query(Lead).filter(
+            Lead.website_url.ilike(data.website_url.strip())
+        ).first()
+        if existing:
+            logger.warning("Duplicate lead rejected: %s (%s)", data.business_name, data.website_url)
+            raise HTTPException(status_code=409, detail=f"Lead with website '{data.website_url}' already exists (id={existing.id})")
     lead = Lead(**data.model_dump())
     db.add(lead)
     db.commit()
     db.refresh(lead)
+    biz_dict = {"name": lead.name, "website_url": lead.website_url or "", "phone": lead.phone or "", "email": lead.email or "", "total_ratings": data.total_ratings or 0, "rating": data.rating or 0.0, "types": [], "address": lead.address or lead.city or ""}
+    potential = calc_lead_potential(biz_dict)
+    lead.lead_score = potential["potential_score"]
+    lead.intent_signals = ", ".join(potential["signals"])
+    db.commit()
+    db.refresh(lead)
+    logger.info("Created lead #%s: %s (score=%s)", lead.id, lead.business_name, lead.lead_score)
     return lead
 
 
@@ -87,3 +106,19 @@ def delete_lead(lead_id: int, db: Session = Depends(get_db)):
 @router.get("/batch/delete")
 def batch_delete_leads(ids: str = Query(..., description="Comma-separated lead IDs")):
     return {"message": "Use DELETE with individual IDs"}
+
+
+@router.post("/export/sheets")
+def export_to_google_sheets(db: Session = Depends(get_db)):
+    from ..services.google_sheets import export_leads_to_sheet
+    sheet_id = os.getenv("GOOGLE_SHEETS_ID", "")
+    if not sheet_id:
+        logger.error("Export failed: GOOGLE_SHEETS_ID not set")
+        return {"success": False, "error": "GOOGLE_SHEETS_ID not set in .env"}
+    logger.info("Exporting %d leads to sheet %s", db.query(Lead).count(), sheet_id)
+    result = export_leads_to_sheet(sheet_id, db)
+    if result.get("success"):
+        logger.info("Export successful: %d leads", result.get("total_leads"))
+    else:
+        logger.error("Export failed: %s", result.get("error"))
+    return result

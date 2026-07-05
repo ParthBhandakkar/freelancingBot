@@ -12,8 +12,12 @@ class LeadCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     city: Optional[str] = None
+    address: Optional[str] = None
     niche: Optional[str] = None
     followers: Optional[int] = 0
+    rating: Optional[float] = 0.0
+    total_ratings: Optional[int] = 0
+    source: Optional[str] = None
     flaws: Optional[str] = None
     analysis_notes: Optional[str] = None
 
@@ -49,8 +53,12 @@ class LeadOut(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     city: Optional[str] = None
+    address: Optional[str] = None
     niche: Optional[str] = None
     followers: Optional[int] = 0
+    rating: Optional[float] = 0.0
+    total_ratings: Optional[int] = 0
+    source: Optional[str] = None
     online_presence_score: Optional[int] = 0
     flaws: Optional[str] = None
     analysis_notes: Optional[str] = None

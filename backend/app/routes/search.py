@@ -1,16 +1,19 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from ..database import get_db
 from ..models import Lead
 from ..schemas import LeadCreate, LeadOut
-from ..services.lead_finder import find_businesses, enrich_search_results, DEFAULT_NICHES
+from ..services.lead_finder import find_businesses, find_by_google_places, find_existing_leads, enrich_search_results, DEFAULT_NICHES
 from ..services.tech_analyzer import detect_tech_stack
 from ..services.social_auditor import find_social_links, estimate_social_metrics
 from ..services.competitor_finder import find_competitors_google_places
 import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -72,30 +75,35 @@ async def search_businesses(
     city: str = Query(..., description="City name"),
     niche: str = Query("", description="Business type (bakery, salon, gym, etc.)"),
     limit: int = Query(20, ge=1, le=50),
-    source: str = Query("auto", description="Data source: auto, google, yelp, sample"),
+    source: str = Query("auto", description="Data source: auto, google, yelp"),
+    db: Session = Depends(get_db),
 ):
-    """Find businesses. Tries multiple sources and returns enriched results."""
+    """Find businesses. Returns enriched results sorted by lead potential, with duplicate detection."""
     try:
         if source == "google":
-            from ..services.lead_finder import find_by_google_places
             results = await find_by_google_places(city, niche, limit)
         elif source == "yelp":
             from ..services.yelp_finder import find_businesses_yelp
             results = await find_businesses_yelp(city, niche, limit)
         else:
-            results = await find_businesses(city, niche, limit, use_sample=True)
+            results = await find_businesses(city, niche, limit)
 
-        enriched = enrich_search_results(results)
+        existing_names = find_existing_leads(results, db)
+        enriched = enrich_search_results(results, existing_names)
 
-        source_type = enriched[0].get("source", "sample_data") if enriched else "none"
+        source_type = enriched[0].get("source", "none") if enriched else "none"
+        logger.info("Search: city=%s niche=%s source=%s total=%d new=%d dup=%d", city, niche, source, len(enriched), sum(1 for r in enriched if not r.get("already_imported")), sum(1 for r in enriched if r.get("already_imported")))
         return {
             "city": city,
             "niche": niche,
             "total": len(enriched),
+            "new_count": sum(1 for r in enriched if not r.get("already_imported")),
+            "dup_count": sum(1 for r in enriched if r.get("already_imported")),
             "source_type": source_type,
             "results": enriched,
         }
     except Exception as e:
+        logger.error("Search failed: city=%s niche=%s error=%s", city, niche, str(e))
         raise HTTPException(status_code=500, detail=f"Failed to find businesses: {str(e)}")
 
 
