@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { useToast } from '../components/Toast'
 
 const statusColors = {
   new: 'bg-yellow-100 text-yellow-800',
@@ -10,11 +11,11 @@ const statusColors = {
   lost: 'bg-red-100 text-red-800',
 }
 
-const responseColors = {
-  pending: 'bg-gray-100 text-gray-600',
-  responded: 'bg-green-100 text-green-800',
-  converted: 'bg-emerald-100 text-emerald-800',
-  rejected: 'bg-red-100 text-red-800',
+const channelMeta = {
+  email: { icon: '📧', label: 'Email', color: 'bg-blue-100 text-blue-700' },
+  call: { icon: '📞', label: 'Call', color: 'bg-green-100 text-green-700' },
+  dm: { icon: '💬', label: 'DM', color: 'bg-purple-100 text-purple-700' },
+  research: { icon: '🔍', label: 'Research', color: 'bg-yellow-100 text-yellow-700' },
 }
 
 export default function Leads() {
@@ -27,7 +28,9 @@ export default function Leads() {
   const [sortBy, setSortBy] = useState('created_at')
   const [sortDir, setSortDir] = useState('desc')
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', business_name: '', platform: 'instagram', profile_url: '', website_url: '', city: '', niche: '' })
+  const [form, setForm] = useState({ name: '', business_name: '', platform: 'instagram', profile_url: '', website_url: '', city: '', niche: '', phone: '', email: '' })
+  const [selected, setSelected] = useState(new Set())
+  const toast = useToast()
 
   const loadLeads = () => {
     setLoading(true)
@@ -42,13 +45,59 @@ export default function Leads() {
     e.preventDefault()
     await api.createLead(form)
     setShowForm(false)
-    setForm({ name: '', business_name: '', platform: 'instagram', profile_url: '', website_url: '', city: '', niche: '' })
+    setForm({ name: '', business_name: '', platform: 'instagram', profile_url: '', website_url: '', city: '', niche: '', phone: '', email: '' })
+    toast.success('Lead created')
     loadLeads()
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this lead?')) return
     await api.deleteLead(id)
+    toast.success('Lead deleted')
+    loadLeads()
+  }
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selected.size === leads.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(leads.map((l) => l.id)))
+    }
+  }
+
+  const bulkDelete = async () => {
+    if (selected.size === 0) return
+    let count = 0
+    for (const id of selected) {
+      try {
+        await api.deleteLead(id)
+        count++
+      } catch (e) { /* skip */ }
+    }
+    toast.success(`Deleted ${count} lead(s)`)
+    setSelected(new Set())
+    loadLeads()
+  }
+
+  const bulkStatusChange = async (newStatus) => {
+    if (selected.size === 0) return
+    let count = 0
+    for (const id of selected) {
+      try {
+        await api.updateLead(id, { status: newStatus })
+        count++
+      } catch (e) { /* skip */ }
+    }
+    toast.success(`Moved ${count} lead(s) to ${newStatus}`)
+    setSelected(new Set())
     loadLeads()
   }
 
@@ -60,10 +109,9 @@ export default function Leads() {
           <button onClick={async () => {
             const result = await api.exportToSheets().catch(e => ({ error: e.message, success: false }));
             if (result.success) {
-              const open = confirm(`Exported ${result.total_leads} leads to Google Sheets!\n\nOpen the sheet?`);
-              if (open) window.open(result.sheet_url, '_blank');
+              toast.success(`Exported ${result.total_leads} leads to Google Sheets`);
             } else {
-              alert('Export failed: ' + (result.error || 'Unknown error'));
+              toast.error('Export failed: ' + (result.error || 'Unknown error'));
             }
           }} className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm">
             📤 Export to Sheets
@@ -116,6 +164,20 @@ export default function Leads() {
         </button>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <span className="text-sm text-blue-700 font-medium">{selected.size} selected</span>
+          <button onClick={bulkDelete} className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs hover:bg-red-700">Delete All</button>
+          {['contacted', 'qualified', 'converted', 'lost'].map((s) => (
+            <button key={s} onClick={() => bulkStatusChange(s)}
+              className="px-3 py-1.5 border border-blue-300 text-blue-700 rounded-lg text-xs hover:bg-blue-100 capitalize">
+              Move to {s}
+            </button>
+          ))}
+          <button onClick={() => setSelected(new Set())} className="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+        </div>
+      )}
+
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-xl p-6 w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
@@ -136,6 +198,10 @@ export default function Leads() {
                   <option value="other">Other</option>
                 </select>
                 <input placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input placeholder="Phone" type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
               </div>
               <input placeholder="Profile URL" value={form.profile_url} onChange={(e) => setForm({ ...form, profile_url: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
               <input placeholder="Website URL" value={form.website_url} onChange={(e) => setForm({ ...form, website_url: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -158,11 +224,18 @@ export default function Leads() {
           <p className="text-sm">Add a lead or use the Find Leads page to discover businesses.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="bg-gray-50 text-gray-600 text-left">
+                <th className="px-2 py-3 w-8">
+                  <input type="checkbox" checked={selected.size === leads.length && leads.length > 0}
+                    onChange={toggleSelectAll} className="rounded" />
+                </th>
                 <th className="px-4 py-3 font-medium">Name / Business</th>
+                <th className="px-4 py-3 font-medium">Contact</th>
+                <th className="px-4 py-3 font-medium">Description</th>
+                <th className="px-4 py-3 font-medium">Channel</th>
                 <th className="px-4 py-3 font-medium">Platform</th>
                 <th className="px-4 py-3 font-medium">City / Address</th>
                 <th className="px-4 py-3 font-medium">Rating</th>
@@ -170,68 +243,94 @@ export default function Leads() {
                 <th className="px-4 py-3 font-medium">Lead Score</th>
                 <th className="px-4 py-3 font-medium">Signals</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Response</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
-              {leads.map((lead) => (
-                <tr key={lead.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <Link to={`/leads/${lead.id}`} className="font-medium text-blue-600 hover:text-blue-800">{lead.name}</Link>
-                    <p className="text-gray-500 text-xs">{lead.business_name}</p>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 capitalize">{lead.platform}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">
-                    <p>{lead.city || '-'}</p>
-                    {lead.address && <p className="text-gray-400 truncate max-w-[150px]">{lead.address}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {lead.rating > 0 ? (
-                      <span className="text-sm">⭐ {lead.rating} <span className="text-gray-400">({lead.total_ratings})</span></span>
-                    ) : <span className="text-gray-300">-</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`font-medium ${lead.online_presence_score >= 70 ? 'text-green-600' : lead.online_presence_score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
-                      {lead.online_presence_score || '-'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {lead.lead_score > 0 ? (
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        lead.lead_score >= 70 ? 'bg-green-100 text-green-800' :
-                        lead.lead_score >= 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {lead.lead_score}
+              {leads.map((lead) => {
+                const ch = channelMeta[lead.channel] || channelMeta.research
+                return (
+                  <tr key={lead.id} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-2 py-3">
+                      <input type="checkbox" checked={selected.has(lead.id)}
+                        onChange={() => toggleSelect(lead.id)} className="rounded" />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link to={`/leads/${lead.id}`} className="font-medium text-blue-600 hover:text-blue-800">{lead.name}</Link>
+                      <p className="text-gray-500 text-xs">{lead.business_name}</p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {lead.phone ? (
+                        <a href={`tel:${lead.phone}`} className="text-blue-600 hover:underline">{lead.phone}</a>
+                      ) : lead.email ? (
+                        <a href={`mailto:${lead.email}`} className="text-blue-600 hover:underline truncate block max-w-[140px]">{lead.email}</a>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 max-w-[180px]">
+                      {lead.analysis_notes ? (
+                        <p className="truncate" title={lead.analysis_notes}>{lead.analysis_notes}</p>
+                      ) : lead.flaws ? (
+                        <p className="truncate text-gray-400" title={lead.flaws}>{lead.flaws}</p>
+                      ) : (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${ch.color}`}>
+                        {ch.icon} {ch.label}
                       </span>
-                    ) : <span className="text-gray-300">-</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {lead.intent_signals ? (
-                      <div className="flex flex-wrap gap-1">
-                        {lead.intent_signals.split(', ').slice(0, 3).map((s, j) => (
-                          <span key={j} className={`text-xs px-1.5 py-0.5 rounded ${
-                            s.includes('No website') ? 'bg-red-100 text-red-700' :
-                            s.includes('No contact') ? 'bg-orange-100 text-orange-700' :
-                            s.includes('Established') || s.includes('Growing') ? 'bg-green-100 text-green-700' :
-                            s.includes('Highly rated') ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-blue-50 text-blue-600'
-                          }`}>{s}</span>
-                        ))}
-                      </div>
-                    ) : <span className="text-gray-300">-</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[lead.status] || 'bg-gray-100'}`}>{lead.status}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${responseColors[lead.response] || 'bg-gray-100'}`}>{lead.response}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => handleDelete(lead.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 capitalize">{lead.platform}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs">
+                      <p>{lead.city || '-'}</p>
+                      {lead.address && <p className="text-gray-400 truncate max-w-[150px]">{lead.address}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {lead.rating > 0 ? (
+                        <span className="text-sm">⭐ {lead.rating} <span className="text-gray-400">({lead.total_ratings})</span></span>
+                      ) : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`font-medium ${lead.online_presence_score >= 70 ? 'text-green-600' : lead.online_presence_score >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {lead.online_presence_score || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {lead.lead_score > 0 ? (
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          lead.lead_score >= 70 ? 'bg-green-100 text-green-800' :
+                          lead.lead_score >= 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {lead.lead_score}
+                        </span>
+                      ) : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {lead.intent_signals ? (
+                        <div className="flex flex-wrap gap-1">
+                          {lead.intent_signals.split(', ').slice(0, 3).map((s, j) => (
+                            <span key={j} className={`text-xs px-1.5 py-0.5 rounded ${
+                              s.includes('No website') ? 'bg-red-100 text-red-700' :
+                              s.includes('No contact') ? 'bg-orange-100 text-orange-700' :
+                              s.includes('Established') || s.includes('Growing') ? 'bg-green-100 text-green-700' :
+                              s.includes('Highly rated') ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-blue-50 text-blue-600'
+                            }`}>{s}</span>
+                          ))}
+                        </div>
+                      ) : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[lead.status] || 'bg-gray-100'}`}>{lead.status}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => handleDelete(lead.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

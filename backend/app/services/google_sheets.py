@@ -62,7 +62,8 @@ def export_leads_to_sheet(spreadsheet_id: str, db: Session) -> dict:
         if not worksheet:
             worksheet = sheet.add_worksheet(title="Leads", rows=1000, cols=20)
     except Exception as e:
-        return {"success": False, "error": f"Sheet access failed: {str(e)}. Make sure the sheet is shared with the service account email."}
+        logger.error("Sheet access failed: type=%s repr=%s", type(e).__name__, repr(e))
+        return {"success": False, "error": f"Sheet access failed ({type(e).__name__}): {repr(e)}. Check: (1) Google Sheets API is enabled at console.cloud.google.com/apis/library/sheets.googleapis.com , (2) the sheet is shared with 'freelancingbot@delta-avenue-385316.iam.gserviceaccount.com' as Editor."}
 
     leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
 

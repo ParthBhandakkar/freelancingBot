@@ -12,6 +12,24 @@ DEFAULT_NICHES = [
     "tutor", "yoga", "florist", "pet store", "mechanic", "plumber",
 ]
 
+GENERIC_TYPES = {
+    "establishment", "point_of_interest", "food", "store", "place_of_worship",
+    "local_government_office", "neighborhood", "political", "premise",
+    "subpremise", "subway_station", "transit_station", "train_station",
+    "travel_agency", "parking", "park", "route", "street_address",
+    "geocode", "post_box", "post_office", "postal_code", "floor",
+    "room", "bus_station", "bus_stop", "airport", "church", "hospital",
+    "school", "university", "colloquial_area", "country", "administrative_area",
+    "intersection", "natural_feature",
+}
+
+
+def pick_best_niche(types: list[str], fallback: str) -> str:
+    for t in types:
+        if t not in GENERIC_TYPES:
+            return t.replace("_", " ").title()
+    return fallback
+
 
 async def find_by_google_places(city: str, niche: str = "", limit: int = 20) -> list[dict]:
     api_key = os.getenv("GOOGLE_API_KEY", "")
@@ -21,60 +39,60 @@ async def find_by_google_places(city: str, niche: str = "", limit: int = 20) -> 
     query = f"{niche} in {city}" if niche else f"business in {city}"
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 
+    results = []
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url, params={"query": query, "key": api_key})
             resp.raise_for_status()
             data = resp.json()
+
+            if data.get("status") != "OK":
+                return []
+
+            for place in data.get("results", [])[:limit]:
+                name = place.get("name", "")
+                if not name:
+                    continue
+
+                place_id = place.get("place_id", "")
+                address = place.get("formatted_address", "")
+                rating = place.get("rating")
+                total_ratings = place.get("user_ratings_total", 0)
+                types = place.get("types", [])
+
+                website = ""
+                phone = ""
+                if place_id:
+                    try:
+                        detail_url = "https://maps.googleapis.com/maps/api/place/details/json"
+                        detail_resp = await client.get(
+                            detail_url,
+                            params={"place_id": place_id, "fields": "website,formatted_phone_number", "key": api_key},
+                        )
+                        result = detail_resp.json().get("result", {})
+                        website = result.get("website", "")
+                        phone = result.get("formatted_phone_number", "")
+                    except Exception:
+                        pass
+
+                results.append({
+                    "name": name,
+                    "business_name": name,
+                    "contact_name": "",
+                    "platform": "google_maps",
+                    "niche": pick_best_niche(types, niche),
+                    "city": city,
+                    "website_url": website,
+                    "phone": phone,
+                    "email": "",
+                    "address": address,
+                    "rating": rating,
+                    "total_ratings": total_ratings,
+                    "source": "google_places",
+                    "profile_url": f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else "",
+                })
     except Exception:
-        return []
-
-    if data.get("status") != "OK":
-        return []
-
-    results = []
-    for place in data.get("results", [])[:limit]:
-        name = place.get("name", "")
-        if not name:
-            continue
-
-        place_id = place.get("place_id", "")
-        address = place.get("formatted_address", "")
-        rating = place.get("rating")
-        total_ratings = place.get("user_ratings_total", 0)
-        types = place.get("types", [])
-
-        website = ""
-        phone = ""
-        if place_id:
-            try:
-                detail_url = "https://maps.googleapis.com/maps/api/place/details/json"
-                detail_resp = await client.get(
-                    detail_url,
-                    params={"place_id": place_id, "fields": "website,formatted_phone_number", "key": api_key},
-                )
-                result = detail_resp.json().get("result", {})
-                website = result.get("website", "")
-                phone = result.get("formatted_phone_number", "")
-            except Exception:
-                pass
-
-        results.append({
-            "name": name,
-            "business_name": name,
-            "contact_name": "",
-            "platform": "google_maps",
-            "niche": types[0] if types else niche,
-            "city": city,
-            "website_url": website,
-            "phone": phone,
-            "email": "",
-            "address": address,
-            "rating": rating,
-            "total_ratings": total_ratings,
-            "source": "google_places",
-            "profile_url": f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else "",
-        })
+        return results
 
     return results
 

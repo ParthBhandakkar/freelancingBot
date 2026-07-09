@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import { useToast } from '../components/Toast'
 
 const tabs = [
   { id: 'overview', label: 'Overview', icon: '📋' },
@@ -9,19 +10,29 @@ const tabs = [
   { id: 'sequences', label: 'Sequences', icon: '🔄' },
 ]
 
+const channelMeta = {
+  email: { icon: '📧', label: 'Email', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  call: { icon: '📞', label: 'Call', color: 'bg-green-100 text-green-700 border-green-200' },
+  dm: { icon: '💬', label: 'DM', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  research: { icon: '🔍', label: 'Research', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+}
+
 export default function LeadDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [lead, setLead] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
+  const toast = useToast()
 
   useEffect(() => {
-    api.getLead(id).then(setLead).catch(console.error).finally(() => setLoading(false))
+    api.getLead(id).then(setLead).catch((e) => { toast.error(e.message); navigate('/leads') }).finally(() => setLoading(false))
   }, [id])
 
   if (loading) return <div className="flex justify-center py-16"><div className="animate-spin text-3xl">⏳</div></div>
   if (!lead) return <div className="text-red-500">Lead not found</div>
+
+  const ch = channelMeta[lead.channel] || channelMeta.research
 
   return (
     <div>
@@ -34,9 +45,14 @@ export default function LeadDetail() {
             <p className="text-gray-500">{lead.business_name} • <span className="capitalize">{lead.platform}</span>{lead.city ? ` • ${lead.city}` : ''}</p>
             {lead.address && <p className="text-xs text-gray-400">{lead.address}</p>}
           </div>
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${lead.status === 'converted' ? 'bg-green-100 text-green-800' : lead.status === 'contacted' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
-            {lead.status}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${ch.color}`}>
+              {ch.icon} {ch.label}
+            </span>
+            <span className={`px-3 py-1 rounded-full text-sm font-medium ${lead.status === 'converted' ? 'bg-green-100 text-green-800' : lead.status === 'contacted' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
+              {lead.status}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-3 mt-2">
           {lead.lead_score > 0 && (
@@ -63,6 +79,9 @@ export default function LeadDetail() {
           {lead.followers > 0 && <div><span className="text-gray-500">Followers:</span> {lead.followers.toLocaleString()}</div>}
           {lead.niche && <div><span className="text-gray-500">Niche:</span> {lead.niche}</div>}
         </div>
+        {lead.analysis_notes && (
+          <p className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{lead.analysis_notes}</p>
+        )}
       </div>
 
       <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit flex-wrap">
@@ -98,15 +117,16 @@ function OverviewTab({ lead, setLead }) {
     email: lead.email || '',
     phone: lead.phone || '',
   })
+  const toast = useToast()
 
   const handleSave = async () => {
     setSaving(true)
     try {
       const updated = await api.updateLead(lead.id, form)
       setLead(updated)
-      alert('Saved!')
+      toast.success('Saved!')
     } catch (e) {
-      alert('Error saving: ' + e.message)
+      toast.error('Error saving: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -183,6 +203,9 @@ function OverviewTab({ lead, setLead }) {
                 onChange={(e) => setForm({ ...form, asset_generated: e.target.checked })} />
               Asset Generated
             </label>
+            {lead.asset_url && (
+              <a href={lead.asset_url} target="_blank" className="text-blue-600 hover:underline text-xs">View Asset</a>
+            )}
           </div>
           {form.asset_generated && (
             <div>
@@ -204,8 +227,11 @@ function OverviewTab({ lead, setLead }) {
 
 function AnalysisTab({ lead }) {
   const [analysis, setAnalysis] = useState(null)
-  const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
+  const [generatingAudit, setGeneratingAudit] = useState(false)
+  const [deepResult, setDeepResult] = useState(null)
+  const [deepAnalyzing, setDeepAnalyzing] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     api.getLeadAnalysis(lead.id).then(setAnalysis).catch(() => {})
@@ -216,27 +242,70 @@ function AnalysisTab({ lead }) {
     try {
       const result = await api.analyzeLead(lead.id)
       setAnalysis(result)
+      toast.success('Analysis complete')
     } catch (e) {
-      alert('Analysis failed: ' + e.message)
+      toast.error('Analysis failed: ' + e.message)
     } finally {
       setAnalyzing(false)
     }
   }
 
+  const handleGenerateAudit = async () => {
+    setGeneratingAudit(true)
+    try {
+      const result = await api.generateAudit(lead.id, true)
+      toast.success('Audit report generated!')
+      window.open(result.asset_url, '_blank')
+    } catch (e) {
+      toast.error('Audit generation failed: ' + e.message)
+    } finally {
+      setGeneratingAudit(false)
+    }
+  }
+
+  const runDeepAnalysis = async () => {
+    setDeepAnalyzing(true)
+    setDeepResult(null)
+    try {
+      const result = await api.deepAnalyzeLead(lead.id)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success('Deep analysis complete!')
+      }
+      setDeepResult(result)
+    } catch (e) {
+      toast.error('Deep analysis failed: ' + e.message)
+    } finally {
+      setDeepAnalyzing(false)
+    }
+  }
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-bold text-gray-700">Deep Lead Analysis</h2>
-        <button onClick={runAnalysis} disabled={analyzing}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium">
-          {analyzing ? 'Analyzing...' : analysis ? 'Re-analyze' : 'Run Analysis'}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleGenerateAudit} disabled={generatingAudit}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium">
+            {generatingAudit ? 'Generating...' : '📄 Generate Audit Report'}
+          </button>
+          <button onClick={runAnalysis} disabled={analyzing}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium">
+            {analyzing ? 'Analyzing...' : analysis ? 'Re-analyze' : 'Run Analysis'}
+          </button>
+          <button onClick={runDeepAnalysis} disabled={deepAnalyzing}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium">
+            {deepAnalyzing ? '🧠 Thinking...' : '🧠 Run Deep Analysis (AI)'}
+          </button>
+        </div>
       </div>
 
-      {!analysis && !analyzing && (
+      {!analysis && !analyzing && !deepResult && !deepAnalyzing && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center text-gray-400">
           <p className="text-3xl mb-2">🔬</p>
           <p>Click "Run Analysis" to scan this lead's website for tech stack, social links, and more.</p>
+          <p className="text-sm mt-2">Or click "Run Deep Analysis (AI)" to get AI-powered recommendations using your local OLLAMA model.</p>
         </div>
       )}
 
@@ -246,7 +315,102 @@ function AnalysisTab({ lead }) {
         </div>
       )}
 
-      {analysis && !analyzing && (
+      {deepAnalyzing && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+          <div className="animate-spin text-4xl mb-3">🧠</div>
+          <p className="text-gray-600 font-medium">Running deep AI analysis...</p>
+          <p className="text-sm text-gray-400 mt-1">OLLAMA is analyzing the website, social media, and business profile to generate ranked recommendations.</p>
+        </div>
+      )}
+
+      {deepResult && (
+        <div className="mb-6 space-y-4">
+          {deepResult.error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-center">
+              <p className="text-red-600 font-medium mb-1">⚠️ OLLAMA Not Available</p>
+              <p className="text-sm text-red-500">{deepResult.error}</p>
+              <p className="text-xs text-gray-500 mt-2">Make sure OLLAMA is running locally (ollama serve) and the model is available.</p>
+            </div>
+          )}
+
+          {!deepResult.error && (
+            <>
+              {deepResult.analysis_summary && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="font-semibold text-gray-700 mb-2">📋 Analysis Summary</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">{deepResult.analysis_summary}</p>
+                </div>
+              )}
+
+              {deepResult.recommendations?.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="font-semibold text-gray-700 mb-4">🏆 Ranked Recommendations</h3>
+                  <div className="space-y-3">
+                    {deepResult.recommendations.sort((a, b) => a.rank - b.rank).map((rec) => (
+                      <div key={rec.rank} className={`p-4 rounded-lg border ${
+                        rec.rank === 1 ? 'bg-yellow-50 border-yellow-200' :
+                        rec.rank === 2 ? 'bg-gray-50 border-gray-200' :
+                        rec.rank === 3 ? 'bg-orange-50 border-orange-200' :
+                        'bg-white border-gray-100'
+                      }`}>
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold text-white ${
+                              rec.rank === 1 ? 'bg-yellow-500' :
+                              rec.rank === 2 ? 'bg-gray-400' :
+                              rec.rank === 3 ? 'bg-orange-500' :
+                              'bg-blue-500'
+                            }`}>{rec.rank}</span>
+                            <span className="font-semibold text-gray-800">{rec.service}</span>
+                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                            rec.confidence >= 80 ? 'bg-green-100 text-green-800' :
+                            rec.confidence >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {rec.confidence}% match
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 ml-9">{rec.reasoning}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {deepResult.pain_points?.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="font-semibold text-gray-700 mb-3">⚠️ Pain Points</h3>
+                  <ul className="space-y-1">
+                    {deepResult.pain_points.map((p, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                        <span className="text-red-400 mt-0.5">•</span>
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {deepResult.opportunities?.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                  <h3 className="font-semibold text-gray-700 mb-3">💡 Opportunities</h3>
+                  <ul className="space-y-1">
+                    {deepResult.opportunities.map((o, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                        <span className="text-green-400 mt-0.5">•</span>
+                        {o}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {analysis && !analyzing && !deepResult && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {analysis.tech_stack && Object.keys(analysis.tech_stack).length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -293,7 +457,7 @@ function AnalysisTab({ lead }) {
                     <div key={platform}>
                       <p className="text-sm font-medium text-gray-600 capitalize">{platform}</p>
                       {links.map((link, i) => (
-                        <a key={i} href={link} target="_blank" className="text-xs text-blue-600 hover:underline block truncate">{link}</a>
+                        <a key={i} href={link} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline block truncate">{link}</a>
                       ))}
                     </div>
                   )
@@ -377,6 +541,14 @@ function OutreachTab({ lead, setLead }) {
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState(null)
   const [customVars, setCustomVars] = useState({})
+  const [drafting, setDrafting] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [sender, setSender] = useState({ my_name: '', my_company: '' })
+  const toast = useToast()
+
+  useEffect(() => {
+    api.getSettings().then(setSender).catch(() => {})
+  }, [])
 
   useEffect(() => {
     api.getTemplates().then(setTemplates).catch(() => {})
@@ -401,8 +573,8 @@ function OutreachTab({ lead, setLead }) {
       score: String(lead.online_presence_score || 0),
       website: lead.website_url || '',
       phone: lead.phone || '',
-      my_name: 'Your Name',
-      my_company: 'Your Company',
+      my_name: sender.my_name || 'Your Name',
+      my_company: sender.my_company || 'Your Company',
     }
     setCustomVars(vars)
 
@@ -416,9 +588,27 @@ function OutreachTab({ lead, setLead }) {
     setBody(renderedBody)
   }
 
+  const handleAiDraft = async () => {
+    setDrafting(true)
+    try {
+      const draft = await api.draftMessage(lead.id, 'email')
+      setSubject(draft.subject)
+      setBody(draft.body)
+      if (draft.ai) {
+        toast.success('AI draft generated')
+      } else {
+        toast.info('Template used (AI not available)')
+      }
+    } catch (e) {
+      toast.error('Draft failed: ' + e.message)
+    } finally {
+      setDrafting(false)
+    }
+  }
+
   const handleSend = async () => {
     if (!lead.email) {
-      alert('This lead has no email address. Add one in the Overview tab.')
+      toast.error('This lead has no email address. Add one in the Overview tab.')
       return
     }
     setSending(true)
@@ -427,11 +617,15 @@ function OutreachTab({ lead, setLead }) {
       const result = await api.sendEmail(lead.id, subject, body)
       setSendResult(result)
       if (result.success) {
+        toast.success('Email sent!')
         const updated = await api.getLead(lead.id)
         setLead(updated)
+      } else {
+        toast.error('Send failed')
       }
     } catch (e) {
       setSendResult({ success: false, error: e.message })
+      toast.error(e.message)
     } finally {
       setSending(false)
     }
@@ -456,12 +650,17 @@ function OutreachTab({ lead, setLead }) {
           ))}
         </div>
 
+        <button onClick={handleAiDraft} disabled={drafting}
+          className="w-full mb-3 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium">
+          {drafting ? 'Drafting...' : '🤖 AI Draft Message'}
+        </button>
+
         <h4 className="text-sm font-medium text-gray-600 mb-2">Variable Help</h4>
         <p className="text-xs text-gray-400 mb-1">Use {'{{variable_name}}'} in templates</p>
         <div className="text-xs text-gray-500 space-y-0.5">
           <p>business_name, contact_name, city, niche</p>
-          <p>flaws, score, website, phone</p>
-          <p>my_name, my_company</p>
+          <p>flaws, score, website, phone, audit_link</p>
+          <p>my_name, my_company, my_website, calendly_link</p>
         </div>
 
         {selectedTemplate && (
@@ -499,7 +698,13 @@ function OutreachTab({ lead, setLead }) {
 
       <div className="lg:col-span-2 space-y-4">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <h3 className="font-semibold text-gray-700 mb-3">Email Preview</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-700">Message</h3>
+            <button onClick={() => setShowPreview(true)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs hover:bg-gray-50">
+              👁️ Preview
+            </button>
+          </div>
           <div className="space-y-3">
             <div>
               <label className="block text-sm text-gray-500 mb-1">Subject</label>
@@ -513,7 +718,7 @@ function OutreachTab({ lead, setLead }) {
                 onChange={(e) => setBody(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none font-mono" />
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
               <button onClick={handleSend} disabled={sending || !subject || !body}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
                 {sending ? 'Sending...' : '📧 Send Email'}
@@ -577,6 +782,37 @@ If now's not a good time, when would work better?
           </div>
         </div>
       </div>
+
+      {showPreview && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowPreview(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h3 className="font-semibold text-gray-700">Email Preview</h3>
+              <button onClick={() => setShowPreview(false)} className="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <div className="p-6">
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <p className="text-xs text-gray-400 mb-4">
+                  <strong>To:</strong> {lead.email || 'No email'} | <strong>Subject:</strong> {subject}
+                </p>
+                <div className="bg-white rounded p-4 border border-gray-100 whitespace-pre-wrap text-sm text-gray-700 font-sans">
+                  {body}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => { setShowPreview(false); handleSend() }} disabled={sending || !lead.email}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+                  {sending ? 'Sending...' : '📧 Send'}
+                </button>
+                <button onClick={() => setShowPreview(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                  Edit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -593,6 +829,7 @@ function SequenceTab({ lead }) {
       { step_order: 2, action_type: 'call', subject: 'Call Script', body: 'Hi {{contact_name}}, this is [Your Name]. I reached out earlier about helping {{business_name}} with your online presence. Have you had a chance to think about it?', delay_days: 7 },
     ],
   })
+  const toast = useToast()
 
   const loadSequences = () => {
     setLoading(true)
@@ -605,18 +842,20 @@ function SequenceTab({ lead }) {
     try {
       await api.createSequence({ lead_id: lead.id, name: newSeq.name, steps: newSeq.steps })
       setShowCreate(false)
+      toast.success('Sequence created')
       loadSequences()
     } catch (e) {
-      alert('Failed to create sequence: ' + e.message)
+      toast.error('Failed to create sequence: ' + e.message)
     }
   }
 
   const handleAdvance = async (seqId) => {
     try {
       await api.advanceSequence(seqId)
+      toast.success('Step advanced')
       loadSequences()
     } catch (e) {
-      alert('Failed to advance: ' + e.message)
+      toast.error('Failed to advance: ' + e.message)
     }
   }
 
@@ -624,12 +863,14 @@ function SequenceTab({ lead }) {
     try {
       if (seq.active) {
         await api.pauseSequence(seq.id)
+        toast.info('Sequence paused')
       } else {
         await api.resumeSequence(seq.id)
+        toast.info('Sequence resumed')
       }
       loadSequences()
     } catch (e) {
-      alert('Failed: ' + e.message)
+      toast.error('Failed: ' + e.message)
     }
   }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { useNavigate } from 'react-router-dom'
+import { useToast } from '../components/Toast'
 
 const tabs = [
   { id: 'finder', label: 'Business Finder', icon: '🔍' },
@@ -40,6 +41,7 @@ export default function Search() {
 }
 
 function FinderTab({ navigate }) {
+  const toast = useToast()
   const [city, setCity] = useState('')
   const [niche, setNiche] = useState('')
   const [suggestedNiches, setSuggestedNiches] = useState([])
@@ -48,6 +50,7 @@ function FinderTab({ navigate }) {
   const [results, setResults] = useState(null)
   const [error, setError] = useState('')
   const [importing, setImporting] = useState(null)
+  const [bulkBusy, setBulkBusy] = useState(false)
 
   useEffect(() => {
     api.getNiches().then((data) => setSuggestedNiches(data.default_niches || [])).catch(() => {})
@@ -68,62 +71,81 @@ function FinderTab({ navigate }) {
     }
   }
 
-  const handleImport = async (biz) => {
+  const bizToLead = (biz) => ({
+    name: (biz.name || biz.business_name || '').split(' ')[0] || 'Unknown',
+    business_name: biz.business_name || biz.name || 'Unknown',
+    platform: 'website',
+    profile_url: biz.profile_url || '',
+    website_url: biz.website_url || '',
+    email: biz.email || '',
+    phone: biz.phone || '',
+    city: biz.city || city,
+    address: biz.address || '',
+    niche: biz.niche || niche || 'general',
+    analysis_notes: biz.address ? `Address: ${biz.address}` : '',
+    total_ratings: biz.total_ratings || 0,
+    rating: biz.rating || 0,
+    source: biz.source || '',
+  })
+
+  // One-click: import the lead, then run full analysis (scrapes email,
+  // detects tech/social, finds competitors, sets channel), then open it.
+  const handleImportAnalyze = async (biz) => {
     setImporting(biz.name)
     try {
-      const lead = await api.createLead({
-        name: biz.name.split(' ')[0],
-        business_name: biz.business_name || biz.name,
-        platform: 'website',
-        profile_url: biz.profile_url || '',
-        website_url: biz.website_url || '',
-        email: biz.email || '',
-        phone: biz.phone || '',
-        city: biz.city || city,
-        address: biz.address || '',
-        niche: biz.niche || niche || 'general',
-        flaws: '',
-        analysis_notes: biz.address ? `Address: ${biz.address}` : '',
-        total_ratings: biz.total_ratings || 0,
-        rating: biz.rating || 0,
-        source: biz.source || '',
-      })
+      const lead = await api.createLead(bizToLead(biz))
+      toast.info(`Analyzing ${lead.business_name}…`)
+      try {
+        await api.analyzeLead(lead.id)
+      } catch (e) {
+        // analysis failure shouldn't lose the lead
+        toast.error('Imported, but analysis failed: ' + e.message)
+      }
       navigate(`/leads/${lead.id}`)
     } catch (e) {
-      alert('Import failed: ' + e.message)
+      toast.error('Import failed: ' + e.message)
     } finally {
       setImporting(null)
     }
   }
 
-  const handleImportAll = async () => {
+  const handleImport = async (biz) => {
+    setImporting(biz.name)
+    try {
+      const lead = await api.createLead(bizToLead(biz))
+      toast.success(`Imported ${lead.business_name}`)
+      navigate(`/leads/${lead.id}`)
+    } catch (e) {
+      toast.error('Import failed: ' + e.message)
+    } finally {
+      setImporting(null)
+    }
+  }
+
+  const handleImportAll = async (analyze) => {
     if (!results?.results?.length) return
     const newBizs = results.results.filter(b => !b.already_imported)
-    if (!newBizs.length) { alert('All leads are already imported!'); return }
-    let count = 0
-    let errors = 0
+    if (!newBizs.length) { toast.info('All leads are already imported'); return }
+    setBulkBusy(true)
+    let count = 0, errors = 0, analyzed = 0
     for (const biz of newBizs) {
       try {
-        await api.createLead({
-          name: (biz.name || biz.business_name || '').split(' ')[0] || 'Unknown',
-          business_name: biz.business_name || biz.name || 'Unknown',
-          platform: 'website',
-          website_url: biz.website_url || '',
-          phone: biz.phone || '',
-          email: biz.email || '',
-          city: biz.city || city,
-          address: biz.address || '',
-          niche: biz.niche || niche || 'general',
-          total_ratings: biz.total_ratings || 0,
-          rating: biz.rating || 0,
-          source: biz.source || '',
-        })
+        const lead = await api.createLead(bizToLead(biz))
         count++
+        if (analyze) {
+          try { await api.analyzeLead(lead.id); analyzed++ } catch { /* keep going */ }
+        }
       } catch (e) {
         errors++
       }
     }
-    alert(`Imported ${count} new lead(s)!${errors ? ` (${errors} failed)` : ''}`)
+    setBulkBusy(false)
+    toast.success(
+      `Imported ${count} lead(s)` +
+      (analyze ? `, analyzed ${analyzed}` : '') +
+      (errors ? ` · ${errors} failed` : '')
+    )
+    handleSearch()
   }
 
   return (
@@ -213,10 +235,17 @@ function FinderTab({ navigate }) {
                 )}
               </div>
               {results.total > 0 && results.new_count > 0 && (
-                <button onClick={handleImportAll}
-                  className="shrink-0 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-                  Import {results.new_count} New
-                </button>
+                <div className="shrink-0 flex gap-2">
+                  <button onClick={() => handleImportAll(false)} disabled={bulkBusy}
+                    className="px-3 py-1.5 text-xs bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium disabled:opacity-50">
+                    {bulkBusy ? 'Working…' : `Import ${results.new_count}`}
+                  </button>
+                  <button onClick={() => handleImportAll(true)} disabled={bulkBusy}
+                    title="Imports each lead, then scrapes their site for emails, detects tech stack & social profiles, finds competitors, and assigns a contact channel"
+                    className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">
+                    {bulkBusy ? 'Working…' : `⚡ Import + Analyze ${results.new_count}`}
+                  </button>
+                </div>
               )}
             </div>
             {results.total === 0 ? (
@@ -264,14 +293,23 @@ function FinderTab({ navigate }) {
                         )}
                       </div>
                     </div>
-                    <button onClick={() => handleImport(biz)} disabled={importing === biz.name || biz.already_imported}
-                      className={`shrink-0 px-3 py-1.5 text-xs rounded-lg font-medium disabled:opacity-50 ${
-                        biz.already_imported
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}>
-                      {importing === biz.name ? '...' : biz.already_imported ? 'Imported' : 'Import'}
-                    </button>
+                    <div className="shrink-0 flex flex-col gap-1.5">
+                      <button onClick={() => handleImportAnalyze(biz)} disabled={importing === biz.name || biz.already_imported}
+                        title="Import, then auto-scrape emails, detect tech & social, find competitors, and set the contact channel"
+                        className={`px-3 py-1.5 text-xs rounded-lg font-medium disabled:opacity-50 ${
+                          biz.already_imported
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}>
+                        {importing === biz.name ? 'Analyzing…' : biz.already_imported ? 'Imported' : '⚡ Import + Analyze'}
+                      </button>
+                      {!biz.already_imported && (
+                        <button onClick={() => handleImport(biz)} disabled={importing === biz.name}
+                          className="px-3 py-1 text-xs rounded-lg text-gray-500 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">
+                          Import only
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -284,6 +322,7 @@ function FinderTab({ navigate }) {
 }
 
 function AnalyzerTab({ navigate }) {
+  const toast = useToast()
   const [url, setUrl] = useState('')
   const [deep, setDeep] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
@@ -329,7 +368,7 @@ function AnalyzerTab({ navigate }) {
       const lead = await api.createLead(leadData)
       navigate(`/leads/${lead.id}`)
     } catch (e) {
-      alert('Error: ' + e.message)
+      toast.error('Error: ' + e.message)
     } finally {
       setAdding(false)
     }
@@ -449,6 +488,7 @@ function AnalyzerTab({ navigate }) {
 }
 
 function ManualTab({ navigate }) {
+  const toast = useToast()
   const [form, setForm] = useState({
     name: '', business_name: '', platform: 'instagram',
     profile_url: '', website_url: '', city: '', niche: '',
@@ -462,7 +502,7 @@ function ManualTab({ navigate }) {
       const lead = await api.createLead(form)
       navigate(`/leads/${lead.id}`)
     } catch (e) {
-      alert('Error: ' + e.message)
+      toast.error('Error: ' + e.message)
     } finally {
       setAdding(false)
     }
@@ -515,6 +555,7 @@ function ManualTab({ navigate }) {
 }
 
 function CompetitorTab() {
+  const toast = useToast()
   const [niche, setNiche] = useState('')
   const [city, setCity] = useState('')
   const [exclude, setExclude] = useState('')
@@ -528,7 +569,7 @@ function CompetitorTab() {
       const data = await api.findCompetitors(niche, city, exclude)
       setResults(data)
     } catch (e) {
-      alert(e.message)
+      toast.error(e.message)
     } finally {
       setSearching(false)
     }

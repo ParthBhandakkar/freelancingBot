@@ -67,6 +67,7 @@ class LeadOut(BaseModel):
     asset_url: Optional[str] = None
     outreach_message: Optional[str] = None
     response: Optional[str] = "pending"
+    channel: Optional[str] = "research"
     lead_score: Optional[int] = 0
     intent_signals: Optional[str] = None
     contacted_at: Optional[datetime] = None
@@ -174,6 +175,21 @@ class OutreachSequenceOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DeepAnalysisRecommendation(BaseModel):
+    service: str
+    rank: int
+    confidence: int
+    reasoning: str
+
+
+class DeepAnalysisOut(BaseModel):
+    recommendations: list[DeepAnalysisRecommendation] = []
+    analysis_summary: str = ""
+    pain_points: list[str] = []
+    opportunities: list[str] = []
+    error: Optional[str] = None
 
 
 class DashboardStats(BaseModel):

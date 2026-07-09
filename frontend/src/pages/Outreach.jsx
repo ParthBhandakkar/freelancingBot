@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
 import { Link } from 'react-router-dom'
+import { useToast } from '../components/Toast'
 
 export default function Outreach() {
   const [activeTab, setActiveTab] = useState('templates')
@@ -29,6 +30,7 @@ function TemplateManager() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', description: '', subject: '', body: '', channel: 'email', variables: [] })
+  const toast = useToast()
 
   const load = () => {
     setLoading(true)
@@ -55,7 +57,7 @@ function TemplateManager() {
       setForm({ name: '', description: '', subject: '', body: '', channel: 'email', variables: [] })
       load()
     } catch (e) {
-      alert('Error: ' + e.message)
+      toast.error('Error: ' + e.message)
     }
   }
 
@@ -73,8 +75,8 @@ function TemplateManager() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this template?')) return
     await api.deleteTemplate(id)
+    toast.success('Template deleted')
     load()
   }
 

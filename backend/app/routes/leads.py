@@ -65,8 +65,19 @@ def create_lead(data: LeadCreate, db: Session = Depends(get_db)):
             Lead.website_url.ilike(data.website_url.strip())
         ).first()
         if existing:
-            logger.warning("Duplicate lead rejected: %s (%s)", data.business_name, data.website_url)
+            logger.warning("Duplicate lead rejected (website): %s (%s)", data.business_name, data.website_url)
             raise HTTPException(status_code=409, detail=f"Lead with website '{data.website_url}' already exists (id={existing.id})")
+    else:
+        name = (data.business_name or data.name or "").strip()
+        city = (data.city or "").strip()
+        if name:
+            dup = db.query(Lead).filter(Lead.business_name.ilike(name))
+            if city:
+                dup = dup.filter(Lead.city.ilike(city))
+            existing = dup.first()
+            if existing:
+                logger.warning("Duplicate lead rejected (name+city): %s / %s", name, city)
+                raise HTTPException(status_code=409, detail=f"Lead '{data.business_name}' in '{data.city}' already exists (id={existing.id})")
     lead = Lead(**data.model_dump())
     db.add(lead)
     db.commit()

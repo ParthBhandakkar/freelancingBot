@@ -26,6 +26,7 @@ class Lead(Base):
     flaws = Column(Text)
     analysis_notes = Column(Text)
     status = Column(String(50), default="new")
+    channel = Column(String(20), default="research")
     asset_generated = Column(Boolean, default=False)
     asset_url = Column(String(500))
     outreach_message = Column(Text)
@@ -86,6 +87,14 @@ class OutreachSequence(Base):
 
     lead = relationship("Lead", back_populates="sequences")
     steps = relationship("OutreachSequenceStep", back_populates="sequence", cascade="all, delete-orphan", order_by="OutreachSequenceStep.step_order")
+
+
+class Setting(Base):
+    __tablename__ = "settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, default="")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class OutreachSequenceStep(Base):

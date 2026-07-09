@@ -46,6 +46,14 @@ export const api = {
   analyzeLead: (id) => request('/analysis/analyze-lead/' + id, { method: 'POST' }),
   getLeadAnalysis: (id) => request('/analysis/lead/' + id),
   deleteLeadAnalysis: (id) => request('/analysis/lead/' + id, { method: 'DELETE' }),
+  generateAudit: (id, useAi) => {
+    let q = 'use_ai=' + (useAi !== false);
+    return request('/analysis/generate-audit/' + id + '?' + q, { method: 'POST' });
+  },
+  reEnrichAll: (limit) => {
+    let q = 'limit=' + (limit || 50);
+    return request('/analysis/re-enrich-all?' + q, { method: 'POST' });
+  },
 
   getTemplates: (params) => {
     const q = params ? new URLSearchParams(params).toString() : '';
@@ -62,16 +70,34 @@ export const api = {
     const q = params ? new URLSearchParams(params).toString() : '';
     return request('/outreach/sequences' + (q ? '?' + q : ''));
   },
+  getDueSequences: () => request('/outreach/sequences/due'),
   getSequence: (id) => request('/outreach/sequences/' + id),
   createSequence: (data) => request('/outreach/sequences', { method: 'POST', body: JSON.stringify(data) }),
   advanceSequence: (id) => request('/outreach/sequences/' + id + '/advance', { method: 'POST' }),
   pauseSequence: (id) => request('/outreach/sequences/' + id + '/pause', { method: 'POST' }),
   resumeSequence: (id) => request('/outreach/sequences/' + id + '/resume', { method: 'POST' }),
 
+  draftMessage: (leadId, channel) => {
+    let q = 'channel=' + (channel || 'email');
+    return request('/outreach/draft/' + leadId + '?' + q, { method: 'POST' });
+  },
   sendEmail: (leadId, subject, body) => {
     let q = 'subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
     return request('/outreach/send-email/' + leadId + '?' + q, { method: 'POST' });
   },
+  logTouch: (leadId, channel, note) => {
+    let q = 'channel=' + encodeURIComponent(channel);
+    if (note) q += '&note=' + encodeURIComponent(note);
+    return request('/outreach/log-touch/' + leadId + '?' + q, { method: 'POST' });
+  },
+  aiStatus: () => request('/outreach/ai-status'),
+
+  getSettings: () => request('/settings'),
+  updateSettings: (data) => request('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  getIntegrationStatus: () => request('/settings/status'),
+
+  deepAnalyzeLead: (id) => request('/analysis/deep-analysis/' + id, { method: 'POST' }),
+  checkOllamaStatus: () => request('/analysis/ollama-status'),
 
   exportToSheets: () => request('/leads/export/sheets', { method: 'POST' }),
 };
